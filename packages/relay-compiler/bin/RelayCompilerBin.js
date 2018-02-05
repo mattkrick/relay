@@ -17,6 +17,7 @@ const {
   CodegenRunner,
   ConsoleReporter,
   WatchmanClient,
+  DotGraphQLParser
 } = require('graphql-compiler');
 
 const RelayJSModuleParser = require('../core/RelayJSModuleParser');
@@ -44,7 +45,6 @@ const {
   schemaExtensions,
 } = RelayIRTransforms;
 
-import type {GetWriterOptions} from 'graphql-compiler';
 import type {GraphQLSchema} from 'graphql';
 
 function buildWatchExpression(options: {
@@ -125,22 +125,31 @@ Ensure that one such file exists in ${srcDir} or its parents.
 
   const useWatchman = options.watchman && (await WatchmanClient.isAvailable());
 
+  const schema = getSchema(schemaPath);
   const parserConfigs = {
-    default: {
+    js: {
       baseDir: srcDir,
       getFileFilter: RelayJSModuleParser.getFileFilter,
       getParser: RelayJSModuleParser.getParser,
-      getSchema: () => getSchema(schemaPath),
+      getSchema: () => schema,
       watchmanExpression: useWatchman ? buildWatchExpression(options) : null,
       filepaths: useWatchman ? null : getFilepathsFromGlob(srcDir, options),
     },
+    graphql: {
+      baseDir: srcDir,
+      getParser: DotGraphQLParser.getParser,
+      getSchema: () => schema,
+      watchmanExpression: useWatchman ? buildWatchExpression({ extensions: ['graphql'], include: options.include, exclude: options.exclude }) : null,
+      filepaths: useWatchman ? null : getFilepathsFromGlob(srcDir, { extensions: ['graphql'], include: options.include, exclude: options.exclude }),
+    }
   };
   const writerConfigs = {
-    default: {
+    js: {
       getWriter: getRelayFileWriter(srcDir),
       isGeneratedFile: (filePath: string) =>
         filePath.endsWith('.js') && filePath.includes('__generated__'),
-      parser: 'default',
+      parser: 'js',
+      baseParsers: ['graphql']
     },
   };
   const codegenRunner = new CodegenRunner({
@@ -148,8 +157,6 @@ Ensure that one such file exists in ${srcDir} or its parents.
     parserConfigs,
     writerConfigs,
     onlyValidate: options.validate,
-    // TODO: allow passing in a flag or detect?
-    sourceControl: null,
   });
   if (!options.validate && !options.watch && options.watchman) {
     // eslint-disable-next-line no-console
@@ -168,14 +175,7 @@ Ensure that one such file exists in ${srcDir} or its parents.
 }
 
 function getRelayFileWriter(baseDir: string) {
-  return ({
-    onlyValidate,
-    schema,
-    documents,
-    baseDocuments,
-    sourceControl,
-    reporter,
-  }: GetWriterOptions) =>
+  return (onlyValidate, schema, documents, baseDocuments, reporter) =>
     new RelayFileWriter({
       config: {
         baseDir,
@@ -197,7 +197,6 @@ function getRelayFileWriter(baseDir: string) {
       baseDocuments,
       documents,
       reporter,
-      sourceControl,
     });
 }
 
@@ -247,7 +246,7 @@ function hasWatchmanRootFile(testPath) {
 const argv = yargs
   .usage(
     'Create Relay generated files\n\n' +
-      '$0 --schema <path> --src <path> [--watch]',
+    '$0 --schema <path> --src <path> [--watch]',
   )
   .options({
     schema: {
@@ -298,8 +297,8 @@ const argv = yargs
     },
     validate: {
       describe:
-        'Looks for pending changes and exits with non-zero code instead of ' +
-        'writing to disk',
+      'Looks for pending changes and exits with non-zero code instead of ' +
+      'writing to disk',
       type: 'boolean',
       default: false,
     },
