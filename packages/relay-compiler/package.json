@@ -28,8 +28,10 @@
     "fbjs": "^0.8.14",
     "graphql": "^0.12.3",
     "immutable": "~3.7.6",
-    "relay-runtime": "1.5.0-rc.1",
     "signedsource": "^1.0.0",
     "yargs": "^9.0.0"
-  }
+  },
+  "peerDependencies": {
+    "relay-runtime": "1.5.0-rc.1"
+  },
 }
