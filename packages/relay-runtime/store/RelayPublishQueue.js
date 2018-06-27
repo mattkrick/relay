@@ -42,11 +42,11 @@ type Payload = {
 
 type DataToCommit =
   | {
-  type: 'client',
+  kind: 'client',
   updater: StoreUpdater
 }
   | {
-  type: 'optimistic',
+  kind: 'optimistic',
   updater: OptimisticUpdate
 }
   | {
@@ -135,7 +135,7 @@ class RelayPublishQueue {
     operation: OperationSelector,
     {fieldPayloads, source}: RelayResponsePayload,
     updater?: ?SelectorStoreUpdater,
-    optimisticUpdate: OptimisticUpdate,
+    optimisticUpdate?: OptimisticUpdate,
   ): void {
     const serverData = {
       kind: 'payload',
@@ -250,7 +250,7 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
     } else {
       const selectorStore =
         new RelayRecordSourceSelectorProxy(store, operation.fragment);
-      selectorStoreUpdater(selectorStore);
+      selectorStoreUpdater && selectorStoreUpdater(selectorStore);
     }
   } else if (optimisticUpdate.storeUpdater) {
     const {storeUpdater} = optimisticUpdate;
@@ -278,25 +278,25 @@ function findUpdaterIdx(
   updates: Array<DataToCommit>,
   updater: StoreUpdater | OptimisticUpdate,
 ): number {
+  // $FlowFixMe
   return updates.findIndex((update) => update.updater === updater);
 }
 
 function handleUpdates(updates, store) {
   for (let ii = 0; ii < updates.length; ii++) {
     const update = updates[ii];
-    const {kind, updater, payload, source} = update;
-    switch (kind) {
+    switch (update.kind) {
       case 'client':
-        updater(store);
+        update.updater(store);
         break;
       case 'optimistic':
-        applyOptimisticUpdate(updater, store);
+        applyOptimisticUpdate(update.updater, store);
         break;
       case 'payload':
-        applyServerPayloadUpdate(payload, store);
+        applyServerPayloadUpdate(update.payload, store);
         break;
       case 'source':
-        store.publishSource(source);
+        store.publishSource(update.source);
         break;
     }
   }
