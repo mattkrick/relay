@@ -548,7 +548,7 @@ describe('RelayPublishQueue', () => {
       expect(publish).not.toBeCalled();
       queue.run();
       expect(publish.mock.calls.length).toBe(1);
-      expect(publish.mock.calls[0][0]).toBe(publishSource);
+      expect(publish.mock.calls[0][0]).toEqual(publishSource);
       expect(notify.mock.calls.length).toBe(1);
     });
 
@@ -798,6 +798,7 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
+            __id: '4',
             id: '4',
             __typename: 'User',
             name: 'zuck',
@@ -815,7 +816,7 @@ describe('RelayPublishQueue', () => {
         4: {
           ...initialData['4'],
           id: '4', // added by server payload
-          name: 'ZUCK', // optimistic update is re-applied on the new data
+          name: 'zuck', // last update wins to guarantee linearizability
         },
       });
     });
@@ -832,13 +833,14 @@ describe('RelayPublishQueue', () => {
       const source = new RelayInMemoryRecordSource(sourceData);
       const store = new RelayMarkSweepStore(source);
       const queue = new RelayPublishQueue(store);
-      // Set name to 'MARK', running the update immediately
-      queue.applyUpdate({
+      const optimisticUpdate = {
         storeUpdater: storeProxy => {
           const zuck = storeProxy.get('4');
           zuck.setValue(zuck.getValue('name').toUpperCase(), 'name');
         },
-      });
+      };
+      // Set name to 'MARK', running the update immediately
+      queue.applyUpdate(optimisticUpdate);
       queue.run();
       // Query payload sets name to 'zuck'
       const {NameQuery} = generateAndCompile(
@@ -858,12 +860,14 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
+            ...initialData['4'],
             id: '4',
-            __typename: 'User',
             name: 'zuck',
           },
         }),
-      });
+        // alert the publish queue that this commit reverts
+        // the corresponding optimistic update
+      }, undefined, optimisticUpdate);
       queue.run();
       // Optimistic update should rebase, capitalizing the new name
       expect(sourceData).toEqual({
@@ -875,7 +879,7 @@ describe('RelayPublishQueue', () => {
         4: {
           ...initialData['4'],
           id: '4', // added by server payload
-          name: 'ZUCK', // optimistic update is re-applied on the new data
+          name: 'zuck', // optimistic update was reverted
         },
       });
     });
@@ -918,8 +922,8 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
+            ...initialData['4'],
             id: '4',
-            __typename: 'User',
             name: 'zuck',
           },
         }),
@@ -978,8 +982,8 @@ describe('RelayPublishQueue', () => {
       queue.commitUpdate(setVolumeTo10Updater);
       queue.run();
 
-      // All the way to 11.
-      expect(getVolume()).toBe(11);
+      // You can't go higher than 10
+      expect(getVolume()).toBe(10);
 
       queue.revertAll();
       queue.run();
@@ -1042,6 +1046,7 @@ describe('RelayPublishQueue', () => {
               me: {[REF_KEY]: '4'},
             },
             4: {
+              __id: '4',
               id: '4',
               __typename: 'User',
               name: 'zuck',
@@ -1050,6 +1055,7 @@ describe('RelayPublishQueue', () => {
         };
         nameSource = new RelayInMemoryRecordSource({
           4: {
+            __id: '4',
             id: '4',
             __typename: 'User',
             name: 'mark',
@@ -1068,6 +1074,7 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
+            __id: '4',
             id: '4',
             __typename: 'User',
             name: 'zuck',
@@ -1085,6 +1092,7 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
+            __id: '4',
             id: '4',
             __typename: 'User',
             name: 'mark',
@@ -1093,7 +1101,7 @@ describe('RelayPublishQueue', () => {
       });
     });
 
-    it('reverts/rebases optimistic updates when comitting sources', () => {
+    it('reverts/rebases optimistic updates when committing sources', () => {
       const sourceData = {
         4: {
           __id: '4',
@@ -1116,8 +1124,8 @@ describe('RelayPublishQueue', () => {
       queue.commitSource(
         new RelayInMemoryRecordSource({
           4: {
+            ...initialData['4'],
             id: '4',
-            __typename: 'User',
             name: 'zuck',
           },
         }),
@@ -1128,7 +1136,7 @@ describe('RelayPublishQueue', () => {
         4: {
           ...initialData['4'],
           id: '4', // added by server payload
-          name: 'ZUCK', // optimistic update is re-applied on the new data
+          name: 'zuck', // last update wins to guarantee linearizability
         },
       });
     });
@@ -1156,8 +1164,8 @@ describe('RelayPublishQueue', () => {
       queue.commitSource(
         new RelayInMemoryRecordSource({
           4: {
+            ...initialData['4'],
             id: '4',
-            __typename: 'User',
             name: 'zuck',
           },
         }),
@@ -1269,11 +1277,14 @@ describe('RelayPublishQueue', () => {
       );
       // Query payload sets name to 'zuck'
       queue.commitPayload(createOperationSelector(NameQuery, {id: '4'}), {
-        me: {
-          id: '4',
-          __typename: 'User',
-          name: 'zuck',
-        },
+        source: new RelayInMemoryRecordSource({
+          4: {
+            __id: '4',
+            id: '4',
+            __typename: 'User',
+            name: 'zuck',
+          },
+        }),
       });
       expect(notify).not.toBeCalled();
       expect(publish).not.toBeCalled();

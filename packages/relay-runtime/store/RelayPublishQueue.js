@@ -25,11 +25,11 @@ import type {
   MutableRecordSource,
   OperationSelector,
   OptimisticUpdate,
+  RecordSource,
+  RelayResponsePayload,
   SelectorStoreUpdater,
   Store,
   StoreUpdater,
-  RecordSource,
-  RelayResponsePayload,
 } from 'RelayStoreTypes';
 import type {SelectorData} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
 
@@ -42,80 +42,79 @@ type Payload = {
 
 type DataToCommit =
   | {
-      kind: 'payload',
-      payload: Payload,
-    }
+  type: 'client',
+  updater: StoreUpdater
+}
   | {
-      kind: 'source',
-      source: RecordSource,
-    };
+  type: 'optimistic',
+  updater: OptimisticUpdate
+}
+  | {
+  kind: 'payload',
+  payload: Payload,
+}
+  | {
+  kind: 'source',
+  source: RecordSource,
+};
 
 /**
- * Coordinates the concurrent modification of a `Store` due to optimistic and
- * non-revertable client updates and server payloads:
- * - Applies optimistic updates.
- * - Reverts optimistic updates, rebasing any subsequent updates.
- * - Commits client updates (typically for client schema extensions).
- * - Commits server updates:
- *   - Normalizes query/mutation/subscription responses.
- *   - Executes handlers for "handle" fields.
- *   - Reverts and reapplies pending optimistic updates.
+ * Coordinates the concurrent modification of a `Store`
+ * due to client, server, and optimistic updates
+ * - Applies updates linearly
+ * - Executes handlers for "handle" fields
+ * - Rebases whenever an optimistic update is committed or reverted
  */
+
 class RelayPublishQueue {
   _store: Store;
   _handlerProvider: ?HandlerProvider;
 
   // A "negative" of all applied updaters. It can be published to the store to
-  // undo them in order to re-apply some of them for a rebase.
+  // undo them in order to re-apply
   _backup: MutableRecordSource;
-  // True if the next `run()` should apply the backup and rerun all optimistic
-  // updates performing a rebase.
+  // The index of the most recent update applied to the backup to achieve the
+  // current store state
+  _currentStoreIdx: number;
+  // True if the next `run()` should publish to the store
+  // even if no changes to the sink has been made. Useful for queries.
+  _forcePublish: boolean;
+  // True if the next `run()` should apply the backup and rerun all updates
+  // performing a rebase.
   _pendingBackupRebase: boolean;
-  // Payloads to apply or Sources to publish to the store with the next `run()`.
-  _pendingData: Set<DataToCommit>;
-  // Updaters to apply with the next `run()`. These mutate the store and should
-  // typically only mutate client schema extensions.
-  _pendingUpdaters: Set<StoreUpdater>;
-  // Optimistic updaters to add with the next `run()`.
-  _pendingOptimisticUpdates: Set<OptimisticUpdate>;
-  // Optimistic updaters that are already added and might be rerun in order to
-  // rebase them.
-  _appliedOptimisticUpdates: Set<OptimisticUpdate>;
+  // All the pending updates, starting with the first optimistic updater
+  // that is awaiting a server response
+  _pendingUpdates: Array<DataToCommit>;
 
   constructor(store: Store, handlerProvider?: ?HandlerProvider) {
     this._backup = new RelayInMemoryRecordSource();
+    this._currentStoreIdx = 0;
+    this._forcePublish = false;
     this._handlerProvider = handlerProvider || null;
     this._pendingBackupRebase = false;
-    this._pendingUpdaters = new Set();
-    this._pendingData = new Set();
-    this._pendingOptimisticUpdates = new Set();
+    this._pendingUpdates = [];
     this._store = store;
-    this._appliedOptimisticUpdates = new Set();
   }
 
   /**
    * Schedule applying an optimistic updates on the next `run()`.
    */
   applyUpdate(updater: OptimisticUpdate): void {
-    invariant(
-      !this._appliedOptimisticUpdates.has(updater) &&
-        !this._pendingOptimisticUpdates.has(updater),
+    invariant(findUpdaterIdx(this._pendingUpdates, updater) === -1,
       'RelayPublishQueue: Cannot apply the same update function more than ' +
-        'once concurrently.',
+      'once concurrently.',
     );
-    this._pendingOptimisticUpdates.add(updater);
+    this._pendingUpdates.push({kind: 'optimistic', updater});
   }
 
   /**
    * Schedule reverting an optimistic updates on the next `run()`.
    */
   revertUpdate(updater: OptimisticUpdate): void {
-    if (this._pendingOptimisticUpdates.has(updater)) {
-      // Reverted before it was applied
-      this._pendingOptimisticUpdates.delete(updater);
-    } else if (this._appliedOptimisticUpdates.has(updater)) {
+    const updateIdx = findUpdaterIdx(this._pendingUpdates, updater);
+    if (updateIdx !== -1) {
       this._pendingBackupRebase = true;
-      this._appliedOptimisticUpdates.delete(updater);
+      this._pendingUpdates.splice(updateIdx, 1);
     }
   }
 
@@ -124,23 +123,36 @@ class RelayPublishQueue {
    */
   revertAll(): void {
     this._pendingBackupRebase = true;
-    this._pendingOptimisticUpdates.clear();
-    this._appliedOptimisticUpdates.clear();
+    this._pendingUpdates = this._pendingUpdates
+      .filter((update) => update.kind !== 'optimistic');
   }
 
   /**
    * Schedule applying a payload to the store on the next `run()`.
+   * If provided, this will revert the corresponding optimistic update
    */
   commitPayload(
     operation: OperationSelector,
     {fieldPayloads, source}: RelayResponsePayload,
     updater?: ?SelectorStoreUpdater,
+    optimisticUpdate: OptimisticUpdate,
   ): void {
-    this._pendingBackupRebase = true;
-    this._pendingData.add({
+    const serverData = {
       kind: 'payload',
       payload: {fieldPayloads, operation, source, updater},
-    });
+    };
+    let spliceIdx = this._pendingUpdates.length;
+    if (optimisticUpdate) {
+      const updateIdx = findUpdaterIdx(this._pendingUpdates, updater);
+      if (updateIdx !== -1) {
+        spliceIdx = updateIdx;
+        this._pendingBackupRebase = true;
+        this._pendingUpdates.splice(spliceIdx, 1, serverData);
+        return;
+      }
+    }
+    this._pendingUpdates.push(serverData);
+    this._forcePublish = true;
   }
 
   /**
@@ -148,8 +160,10 @@ class RelayPublishQueue {
    * update client schema fields.
    */
   commitUpdate(updater: StoreUpdater): void {
-    this._pendingBackupRebase = true;
-    this._pendingUpdaters.add(updater);
+    this._pendingUpdates.push({
+      kind: 'client',
+      updater,
+    });
   }
 
   /**
@@ -158,161 +172,132 @@ class RelayPublishQueue {
    * are missing in the store.
    */
   commitSource(source: RecordSource): void {
-    this._pendingBackupRebase = true;
-    this._pendingData.add({kind: 'source', source});
+    this._pendingUpdates.push({kind: 'source', source});
   }
 
   /**
    * Execute all queued up operations from the other public methods.
+   * There is a single queue for all updates to guarantee linearizability
    */
   run(): void {
-    if (this._pendingBackupRebase && this._backup.size()) {
-      this._store.publish(this._backup);
-      this._backup = new RelayInMemoryRecordSource();
+    const sink = new RelayInMemoryRecordSource();
+    if (this._pendingBackupRebase) {
+      this._currentStoreIdx = 0;
+      if (this._backup.size() || this._currentStoreIdx > 0) {
+        this._store.publish(this._backup);
+      }
     }
-    this._commitData();
-    this._commitUpdaters();
-    this._applyUpdates();
+    this._commitPendingUpdates(sink);
+    this._applyPendingUpdates(sink);
+
+    if (this._sink.size() || this._forcePublish) {
+      this._store.publish(this._sink);
+      this._forcePublish = false;
+    }
     this._pendingBackupRebase = false;
+    this._currentStoreIdx = this._pendingUpdates.length;
     this._store.notify();
   }
 
-  _getSourceFromPayload(payload: Payload): RecordSource {
-    const {fieldPayloads, operation, source, updater} = payload;
+  _applyPendingUpdates(sink) {
+    const updates = this._pendingUpdates.slice(this._currentStoreIdx);
+    const store = this._makeStore(sink);
+    handleUpdates(updates, store);
+  }
+
+  _commitPendingUpdates(sink) {
+    const firstOptimisticIdx = this._pendingUpdates
+      .findIndex((update) => update.kind === 'optimistic');
+    const endIdx = firstOptimisticIdx === -1 ? this._pendingUpdates.length : firstOptimisticIdx;
+    const updatesToCommit = this._pendingUpdates.splice(0, endIdx);
+    if (updatesToCommit.length) {
+      const store = this._makeStore(sink, true);
+      handleUpdates(updatesToCommit, store);
+      this._backup = new RelayInMemoryRecordSource();
+    }
+  }
+
+  _makeStore(sink, isCommit) {
     const mutator = new RelayRecordSourceMutator(
       this._store.getSource(),
-      source,
+      sink,
+      isCommit ? undefined : this._backup,
     );
-    const store = new RelayRecordSourceProxy(mutator);
-    const selectorStore = new RelayRecordSourceSelectorProxy(
-      store,
-      operation.fragment,
-    );
-    if (fieldPayloads && fieldPayloads.length) {
-      fieldPayloads.forEach(fieldPayload => {
-        const handler =
-          this._handlerProvider && this._handlerProvider(fieldPayload.handle);
-        invariant(
-          handler,
-          'RelayModernEnvironment: Expected a handler to be provided for ' +
-            'handle `%s`.',
-          fieldPayload.handle,
-        );
-        handler.update(store, fieldPayload);
-      });
-    }
-    if (updater) {
-      const selectorData = lookupSelector(source, operation.fragment);
-      updater(selectorStore, selectorData);
-    }
-    return source;
+    return new RelayRecordSourceProxy(mutator, this._handlerProvider);
   }
+}
 
-  _commitData(): void {
-    if (!this._pendingData.size) {
-      return;
-    }
-    this._pendingData.forEach(data => {
-      let source;
-      if (data.kind === 'payload') {
-        source = this._getSourceFromPayload(data.payload);
-      } else {
-        source = data.source;
-      }
-      this._store.publish(source);
-    });
-    this._pendingData.clear();
-  }
+function applyOptimisticUpdate(optimisticUpdate, store) {
+  if (optimisticUpdate.operation) {
+    const {
+      selectorStoreUpdater,
+      operation,
+      response,
+    } = optimisticUpdate;
 
-  _commitUpdaters(): void {
-    if (!this._pendingUpdaters.size) {
-      return;
-    }
-    const sink = new RelayInMemoryRecordSource();
-    this._pendingUpdaters.forEach(updater => {
-      const mutator = new RelayRecordSourceMutator(
-        this._store.getSource(),
-        sink,
+    if (response) {
+      const {source, fieldPayloads} = normalizeRelayPayload(
+        operation.root,
+        response,
       );
-      const store = new RelayRecordSourceProxy(mutator);
-      updater(store);
-    });
-    this._store.publish(sink);
-    this._pendingUpdaters.clear();
+      store.publishSource(source, fieldPayloads);
+      if (selectorStoreUpdater) {
+        const selectorData = lookupSelector(source, operation.fragment);
+        const selectorStore =
+          new RelayRecordSourceSelectorProxy(store, operation.fragment);
+        selectorStoreUpdater(selectorStore, selectorData);
+      }
+    } else {
+      const selectorStore =
+        new RelayRecordSourceSelectorProxy(store, operation.fragment);
+      selectorStoreUpdater(selectorStore);
+    }
+  } else if (optimisticUpdate.storeUpdater) {
+    const {storeUpdater} = optimisticUpdate;
+    storeUpdater(store);
+  } else {
+    const {source, fieldPayloads} = optimisticUpdate;
+    store.publishSource(source, fieldPayloads);
   }
+}
 
-  _applyUpdates(): void {
-    if (
-      this._pendingOptimisticUpdates.size ||
-      (this._pendingBackupRebase && this._appliedOptimisticUpdates.size)
-    ) {
-      const sink = new RelayInMemoryRecordSource();
-      const mutator = new RelayRecordSourceMutator(
-        this._store.getSource(),
-        sink,
-        this._backup,
-      );
-      const store = new RelayRecordSourceProxy(mutator, this._handlerProvider);
+function applyServerPayloadUpdate(payload: Payload, store): void {
+  const {fieldPayloads, operation, source, updater} = payload;
+  store.publishSource(source, fieldPayloads);
+  const selectorStore = new RelayRecordSourceSelectorProxy(
+    store,
+    operation.fragment,
+  );
+  if (updater) {
+    const selectorData = lookupSelector(source, operation.fragment);
+    updater(selectorStore, selectorData);
+  }
+}
 
-      // rerun all updaters in case we are running a rebase
-      if (this._pendingBackupRebase && this._appliedOptimisticUpdates.size) {
-        this._appliedOptimisticUpdates.forEach(optimisticUpdate => {
-          if (optimisticUpdate.operation) {
-            const {
-              selectorStoreUpdater,
-              operation,
-              response,
-            } = optimisticUpdate;
-            const selectorStore = store.commitPayload(operation, response);
-            // TODO: Fix commitPayload so we don't have to run normalize twice
-            let selectorData, source;
-            if (response) {
-              ({source} = normalizeRelayPayload(operation.root, response));
-              selectorData = lookupSelector(source, operation.fragment);
-            }
-            selectorStoreUpdater &&
-              selectorStoreUpdater(selectorStore, selectorData);
-          } else if (optimisticUpdate.storeUpdater) {
-            const {storeUpdater} = optimisticUpdate;
-            storeUpdater(store);
-          } else {
-            const {source, fieldPayloads} = optimisticUpdate;
-            store.publishSource(source, fieldPayloads);
-          }
-        });
-      }
+function findUpdaterIdx(
+  updates: Array<DataToCommit>,
+  updater: StoreUpdater | OptimisticUpdate,
+): number {
+  return updates.findIndex((update) => update.updater === updater);
+}
 
-      // apply any new updaters
-      if (this._pendingOptimisticUpdates.size) {
-        this._pendingOptimisticUpdates.forEach(optimisticUpdate => {
-          if (optimisticUpdate.operation) {
-            const {
-              selectorStoreUpdater,
-              operation,
-              response,
-            } = optimisticUpdate;
-            const selectorStore = store.commitPayload(operation, response);
-            // TODO: Fix commitPayload so we don't have to run normalize twice
-            let selectorData, source;
-            if (response) {
-              ({source} = normalizeRelayPayload(operation.root, response));
-              selectorData = lookupSelector(source, operation.fragment);
-            }
-            selectorStoreUpdater &&
-              selectorStoreUpdater(selectorStore, selectorData);
-          } else if (optimisticUpdate.storeUpdater) {
-            const {storeUpdater} = optimisticUpdate;
-            storeUpdater(store);
-          } else {
-            const {source, fieldPayloads} = optimisticUpdate;
-            store.publishSource(source, fieldPayloads);
-          }
-          this._appliedOptimisticUpdates.add(optimisticUpdate);
-        });
-        this._pendingOptimisticUpdates.clear();
-      }
-
-      this._store.publish(sink);
+function handleUpdates(updates, store) {
+  for (let ii = 0; ii < updates.length; ii++) {
+    const update = updates[ii];
+    const {kind, updater, payload, source} = update;
+    switch (kind) {
+      case 'client':
+        updater(store);
+        break;
+      case 'optimistic':
+        applyOptimisticUpdate(updater, store);
+        break;
+      case 'payload':
+        applyServerPayloadUpdate(payload, store);
+        break;
+      case 'source':
+        store.publishSource(source);
+        break;
     }
   }
 }

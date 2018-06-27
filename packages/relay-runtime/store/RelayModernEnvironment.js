@@ -213,10 +213,6 @@ class RelayModernEnvironment implements Environment {
             this._publishQueue.applyUpdate(optimisticResponse);
             this._publishQueue.run();
           } else {
-            if (optimisticResponse) {
-              this._publishQueue.revertUpdate(optimisticResponse);
-              optimisticResponse = undefined;
-            }
             const writeSelector = createOperationSelector(
               operation.node,
               executePayload.variables,
@@ -239,7 +235,9 @@ class RelayModernEnvironment implements Environment {
               writeSelector,
               responsePayload,
               updater,
+              optimisticResponse
             );
+            optimisticResponse = undefined;
             this._publishQueue.run();
           }
         },
@@ -295,15 +293,13 @@ class RelayModernEnvironment implements Environment {
           }
         },
         next: payload => {
-          if (optimisticUpdate) {
-            this._publishQueue.revertUpdate(optimisticUpdate);
-            optimisticUpdate = undefined;
-          }
           this._publishQueue.commitPayload(
             operation,
             normalizePayload(payload),
             updater,
+            optimisticUpdate
           );
+          optimisticUpdate = undefined;
           this._publishQueue.run();
         },
         error: error => {
