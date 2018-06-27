@@ -10,10 +10,10 @@
 
 'use strict';
 
-const isPromise = require('isPromise');
+const isPromise = require('../util/isPromise');
 
 import type {Disposable} from '../util/RelayRuntimeTypes';
-import type {LegacyObserver} from 'RelayNetworkTypes';
+import type {LegacyObserver} from './RelayNetworkTypes';
 
 /**
  * A Subscription object is returned from .subscribe(), which can be
@@ -613,7 +613,7 @@ if (__DEV__) {
       });
     } else if (typeof console !== 'undefined') {
       // Otherwise, log the unhandled error for visibility.
-      // eslint-ignore-next-line no-console
+      // eslint-disable-next-line no-console
       console.error('RelayObservable: Unhandled Error', error);
     }
   });

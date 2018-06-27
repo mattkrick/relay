@@ -10,11 +10,11 @@
 
 'use strict';
 
-const RelayConcreteNode = require('RelayConcreteNode');
+const RelayConcreteNode = require('../util/RelayConcreteNode');
 
 const invariant = require('invariant');
 
-import type {ConcreteFragment, RequestNode} from 'RelayConcreteNode';
+import type {ConcreteFragment, RequestNode} from '../util/RelayConcreteNode';
 import type {
   ConcreteFragmentDefinition,
   ConcreteOperationDefinition,
@@ -72,7 +72,7 @@ function getRequest(taggedNode: GraphQLTaggedNode): RequestNode {
       request !== null &&
       (request.kind === RelayConcreteNode.REQUEST ||
         request.kind === RelayConcreteNode.BATCH_REQUEST),
-    'RelayModernGraphQLTag: Expected an request, got `%s`.',
+    'RelayModernGraphQLTag: Expected a request, got `%s`.',
     JSON.stringify(request),
   );
   return (request: any);

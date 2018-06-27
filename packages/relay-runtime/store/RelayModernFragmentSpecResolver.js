@@ -11,12 +11,12 @@
 'use strict';
 
 const invariant = require('invariant');
-const isScalarAndEqual = require('isScalarAndEqual');
+const isScalarAndEqual = require('../util/isScalarAndEqual');
 
 const {
   areEqualSelectors,
   getSelectorsFromObject,
-} = require('RelayModernSelector');
+} = require('./RelayModernSelector');
 
 import type {Disposable, Variables} from '../util/RelayRuntimeTypes';
 import type {
@@ -25,7 +25,7 @@ import type {
   RelayContext,
   Selector,
   Snapshot,
-} from 'RelayStoreTypes';
+} from './RelayStoreTypes';
 import type {
   FragmentSpecResolver,
   FragmentSpecResults,

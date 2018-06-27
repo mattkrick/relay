@@ -12,7 +12,7 @@
 
 const RelayCompilerCache = require('../util/RelayCompilerCache');
 
-const babylon = require('metro-babylon7');
+const babylon = require('babylon');
 const getModuleName = require('../util/getModuleName');
 const graphql = require('graphql');
 const path = require('path');
@@ -40,7 +40,9 @@ const BABYLON_OPTIONS = {
     'functionBind',
     'functionSent',
     'jsx',
+    'nullishCoalescingOperator',
     'objectRestSpread',
+    'optionalChaining',
   ],
   strictMode: false,
 };

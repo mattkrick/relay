@@ -10,19 +10,19 @@
 
 'use strict';
 
-const RelayConnectionInterface = require('RelayConnectionInterface');
+const RelayConnectionInterface = require('./RelayConnectionInterface');
 
-const generateRelayClientID = require('generateRelayClientID');
-const getRelayHandleKey = require('getRelayHandleKey');
+const generateRelayClientID = require('../../store/generateRelayClientID');
+const getRelayHandleKey = require('../../util/getRelayHandleKey');
 const invariant = require('invariant');
 const warning = require('warning');
 
-import type {DataID, Variables} from '../../util/RelayRuntimeTypes';
 import type {
   HandleFieldPayload,
   RecordProxy,
   RecordSourceProxy,
-} from 'RelayStoreTypes';
+} from '../../store/RelayStoreTypes';
+import type {DataID, Variables} from '../../util/RelayRuntimeTypes';
 
 export type ConnectionMetadata = {
   path: ?Array<string>,
@@ -178,7 +178,11 @@ function update(store: RecordSourceProxy, payload: HandleFieldPayload): void {
     }
     // Page info should be updated even if no new edge were returned.
     if (clientPageInfo && serverPageInfo) {
-      if (args.before != null || (args.after == null && args.last)) {
+      if (args.after == null && args.before == null) {
+        // The connection was refetched from the beginning/end: replace
+        // page_info
+        clientPageInfo.copyFieldsFrom(serverPageInfo);
+      } else if (args.before != null || (args.after == null && args.last)) {
         clientPageInfo.setValue(
           !!serverPageInfo.getValue(HAS_PREV_PAGE),
           HAS_PREV_PAGE,

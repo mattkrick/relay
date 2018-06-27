@@ -12,13 +12,11 @@
 
 jest.mock('generateClientID');
 
-const RelayInMemoryRecordSource = require('RelayInMemoryRecordSource');
-const RelayReferenceMarker = require('RelayReferenceMarker');
-const RelayStoreUtils = require('RelayStoreUtils');
+const RelayInMemoryRecordSource = require('../RelayInMemoryRecordSource');
 const RelayModernTestUtils = require('RelayModernTestUtils');
 
-const {mark} = RelayReferenceMarker;
-const {ROOT_ID} = RelayStoreUtils;
+const {mark} = require('../RelayReferenceMarker');
+const {ROOT_ID} = require('../RelayStoreUtils');
 
 describe('RelayReferenceMarker', () => {
   const {generateAndCompile} = RelayModernTestUtils;

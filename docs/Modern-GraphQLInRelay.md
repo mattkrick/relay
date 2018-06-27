@@ -88,6 +88,8 @@ Relay by default will only expose the data for fields explicitly requested by a 
 
 However, `@relay(mask: false)` can be used to prevent data masking; when including a fragment and annotating it with `@relay(mask: false)`, its data will be available to the parent, recursively including the data from the fields of the referenced fragment.
 
+Applied to a fragment definition, `@relay(mask: false)` changes the generated Flow types to be better usable when the fragment is included with the same directive. The Flow types will no longer be exact objects and no longer contain internal marker fields.
+
 This may be helpful to reduce redundant fragments when dealing with nested or recursive data within a single Component.
 
 Keep in mind that it is typically considered an **anti-pattern** to create a single fragment shared across many containers. Abusing this directive could result in over-fetching in your application.
@@ -96,7 +98,7 @@ In the example below, the `user` prop will include the data for `id` and `name` 
 
 ```javascript
 graphql`
-  fragment Component_internUser on InternUser {
+  fragment Component_internUser on InternUser @relay(mask: false) {
     id
     name
   }
@@ -225,7 +227,7 @@ This would produce three generated files, and two `__generated__` directories:
 
 Typically you will not need to import your generated definitions. The [Relay Babel plugin](./installation-and-setup.html#setup-babel-plugin-relay) will then convert the `graphql` literals in your code into `require()` calls for the generated files.
 
-However the Relay Compiler also automatically generates [Flow](https://flow.org) types as [type comments](https://flow.org/en/docs/types/comments/). For example, you can import the generated flow types like so:
+However the Relay Compiler also automatically generates [Flow](https://flow.org) types as [type comments](https://flow.org/en/docs/types/comments/). For example, you can import the generated Flow types like so:
 
 ```javascript
 import type {DictionaryComponent_word} from './__generated__/DictionaryComponent_word.graphql';
@@ -235,4 +237,4 @@ import type {DictionaryComponent_word} from './__generated__/DictionaryComponent
 
 In addition to the bin script, the `relay-compiler` package also [exports library code](https://github.com/facebook/relay/blob/master/packages/relay-compiler/RelayCompilerPublic.js) which you may use to create more complex configurations for the compiler, or to extend the compiler with your own custom output.
 
-If you find you need to do something unique (like generate types that conform to an older version of flow, or to parse non-javascript source files), you can build your own version of the Compiler by swapping in your own `FileWriter` and `ASTCache`, or by adding on an additional `IRTransform`. Note, the internal APIs of the `RelayCompiler` are under constant iteration, so rolling your own version may lead to incompatibilities with future releases.
+If you find you need to do something unique (like generate types that conform to an older version of Flow, or to parse non-javascript source files), you can build your own version of the Compiler by swapping in your own `FileWriter` and `ASTCache`, or by adding on an additional `IRTransform`. Note, the internal APIs of the `RelayCompiler` are under constant iteration, so rolling your own version may lead to incompatibilities with future releases.

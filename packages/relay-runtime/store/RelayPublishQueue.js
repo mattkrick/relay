@@ -10,16 +10,17 @@
 
 'use strict';
 
-const RelayInMemoryRecordSource = require('RelayInMemoryRecordSource');
-const RelayReader = require('RelayReader');
-const RelayRecordSourceMutator = require('RelayRecordSourceMutator');
-const RelayRecordSourceProxy = require('RelayRecordSourceProxy');
-const RelayRecordSourceSelectorProxy = require('RelayRecordSourceSelectorProxy');
+const ErrorUtils = require('ErrorUtils');
+const RelayInMemoryRecordSource = require('./RelayInMemoryRecordSource');
+const RelayReader = require('./RelayReader');
+const RelayRecordSourceMutator = require('../mutations/RelayRecordSourceMutator');
+const RelayRecordSourceProxy = require('../mutations/RelayRecordSourceProxy');
+const RelayRecordSourceSelectorProxy = require('../mutations/RelayRecordSourceSelectorProxy');
 
 const invariant = require('invariant');
-const normalizeRelayPayload = require('normalizeRelayPayload');
+const normalizeRelayPayload = require('./normalizeRelayPayload');
 
-import type {HandlerProvider} from 'RelayDefaultHandlerProvider';
+import type {HandlerProvider} from '../handlers/RelayDefaultHandlerProvider';
 import type {
   HandleFieldPayload,
   MutableRecordSource,
@@ -30,7 +31,7 @@ import type {
   SelectorStoreUpdater,
   Store,
   StoreUpdater,
-} from 'RelayStoreTypes';
+} from './RelayStoreTypes';
 import type {SelectorData} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
 
 type Payload = {
@@ -245,12 +246,24 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
         const selectorData = lookupSelector(source, operation.fragment);
         const selectorStore =
           new RelayRecordSourceSelectorProxy(store, operation.fragment);
-        selectorStoreUpdater(selectorStore, selectorData);
+        ErrorUtils.applyWithGuard(
+          selectorStoreUpdater,
+          null,
+          [selectorStore, selectorData],
+          null,
+          'RelayPublishQueue:applyUpdates',
+        );
       }
     } else {
       const selectorStore =
         new RelayRecordSourceSelectorProxy(store, operation.fragment);
-      selectorStoreUpdater(selectorStore);
+      ErrorUtils.applyWithGuard(
+        selectorStoreUpdater,
+        null,
+        [selectorStore],
+        null,
+        'RelayPublishQueue:applyUpdates',
+      );
     }
   } else if (optimisticUpdate.storeUpdater) {
     const {storeUpdater} = optimisticUpdate;
@@ -287,7 +300,13 @@ function handleUpdates(updates, store) {
     const {kind, updater, payload, source} = update;
     switch (kind) {
       case 'client':
-        updater(store);
+        ErrorUtils.applyWithGuard(
+          updater,
+          null,
+          [store],
+          null,
+          'RelayPublishQueue:handleUpdates',
+        );
         break;
       case 'optimistic':
         applyOptimisticUpdate(updater, store);
@@ -305,7 +324,7 @@ function handleUpdates(updates, store) {
 function lookupSelector(source, selector): ?SelectorData {
   const selectorData = RelayReader.read(source, selector).data;
   if (__DEV__) {
-    const deepFreeze = require('deepFreeze');
+    const deepFreeze = require('../util/deepFreeze');
     if (selectorData) {
       deepFreeze(selectorData);
     }
