@@ -448,7 +448,7 @@ describe('RelayModernEnvironment', () => {
       expect(callback.mock.calls.length).toBe(1);
       expect(callback.mock.calls[0][0].data).toEqual({
         me: {
-          name: 'ZUCK',
+          name: 'Zuck',
         },
       });
     });

@@ -143,7 +143,7 @@ class RelayPublishQueue {
     };
     let spliceIdx = this._pendingUpdates.length;
     if (optimisticUpdate) {
-      const updateIdx = findUpdaterIdx(this._pendingUpdates, updater);
+      const updateIdx = findUpdaterIdx(this._pendingUpdates, optimisticUpdate);
       if (updateIdx !== -1) {
         spliceIdx = updateIdx;
         this._pendingBackupRebase = true;
@@ -190,8 +190,8 @@ class RelayPublishQueue {
     this._commitPendingUpdates(sink);
     this._applyPendingUpdates(sink);
 
-    if (this._sink.size() || this._forcePublish) {
-      this._store.publish(this._sink);
+    if (sink.size() || this._forcePublish) {
+      this._store.publish(sink);
       this._forcePublish = false;
     }
     this._pendingBackupRebase = false;
