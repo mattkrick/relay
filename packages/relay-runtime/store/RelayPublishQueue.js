@@ -83,8 +83,9 @@ class RelayPublishQueue {
   // True if the next `run()` should apply the backup and rerun all updates
   // performing a rebase.
   _pendingBackupRebase: boolean;
-  // All the pending updates, starting with the first optimistic updater
-  // that is awaiting a server response
+  // All the pending updates to be processed in order.
+  // Updates will be committed until an optimistic update is reached.
+  // After that, updates will be applied
   _pendingUpdates: Array<DataToCommit>;
 
   constructor(store: Store, handlerProvider?: ?HandlerProvider) {
@@ -267,7 +268,13 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
     }
   } else if (optimisticUpdate.storeUpdater) {
     const {storeUpdater} = optimisticUpdate;
-    storeUpdater(store);
+    ErrorUtils.applyWithGuard(
+      storeUpdater,
+      null,
+      [store],
+      null,
+      'RelayPublishQueue:applyUpdates',
+    );
   } else {
     const {source, fieldPayloads} = optimisticUpdate;
     store.publishSource(source, fieldPayloads);
@@ -305,7 +312,7 @@ function handleUpdates(updates, store) {
           null,
           [store],
           null,
-          'RelayPublishQueue:handleUpdates',
+          'RelayPublishQueue:applyUpdates',
         );
         break;
       case 'optimistic':

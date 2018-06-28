@@ -1037,6 +1037,7 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
+            __id: '4',
             id: '4',
             __typename: 'User',
             name: 'zuck',
