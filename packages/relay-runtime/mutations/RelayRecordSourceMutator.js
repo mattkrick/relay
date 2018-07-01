@@ -16,6 +16,7 @@ const invariant = require('invariant');
 
 const {EXISTENT} = require('RelayRecordState');
 const {
+  ID_KEY,
   UNPUBLISH_FIELD_SENTINEL,
   UNPUBLISH_RECORD_SENTINEL,
 } = require('RelayStoreUtils');
@@ -148,8 +149,19 @@ class RelayRecordSourceMutator {
   }
 
   copyFieldsFromRecord(record: Record, sinkID: DataID): void {
-    this.copyFields(RelayModernRecord.getDataID(record), sinkID);
+    const baseSource = this._base.get(sinkID);
     const sink = this._getSinkRecord(sinkID);
+    this._createBackupRecord(sinkID);
+    // guarantees base records will not overwrite sink records
+    for (const key in baseSource) {
+      if (
+        key !== ID_KEY &&
+        baseSource.hasOwnProperty(key) &&
+        !sink.hasOwnProperty(key)
+      ) {
+        sink[key] = baseSource[key];
+      }
+    }
     RelayModernRecord.copyFields(record, sink);
     this._setSentinelFieldsInBackupRecord(sinkID, sink);
   }
