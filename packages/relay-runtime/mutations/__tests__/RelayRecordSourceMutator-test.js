@@ -260,6 +260,18 @@ describe('RelayRecordSourceMutator', () => {
       });
       expect(backupData.seattle).toBe(UNPUBLISH_RECORD_SENTINEL);
     });
+
+    it('does not overwrite the sink with the base', () => {
+      const sourceRecord = initialData.sf;
+      baseData.sf.timezone = 'Tahiti Time';
+      sinkData.sf = {
+        [ID_KEY]: 'sf',
+        [TYPENAME_KEY]: 'Page',
+        timezone: 'Pacific Standard Time'
+      };
+      backupMutator.copyFieldsFromRecord(sourceRecord, 'sf');
+      expect(sinkData.sf.timezone).toEqual('Pacific Standard Time');
+    });
   });
 
   describe('create()', () => {
