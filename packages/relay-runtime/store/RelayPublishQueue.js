@@ -141,13 +141,11 @@ class RelayPublishQueue {
       kind: 'payload',
       payload: {fieldPayloads, operation, source, updater},
     };
-    let spliceIdx = this._pendingUpdates.length;
     if (optimisticUpdate) {
       const updateIdx = findUpdaterIdx(this._pendingUpdates, optimisticUpdate);
       if (updateIdx !== -1) {
-        spliceIdx = updateIdx;
         this._pendingBackupRebase = true;
-        this._pendingUpdates.splice(spliceIdx, 1, serverData);
+        this._pendingUpdates.splice(updateIdx, 1, serverData);
         return;
       }
     }
@@ -200,9 +198,11 @@ class RelayPublishQueue {
   }
 
   _applyPendingUpdates(sink) {
-    const updates = this._pendingUpdates.slice(this._currentStoreIdx);
-    const store = this._makeStore(sink);
-    handleUpdates(updates, store);
+    if (this._currentStoreIdx < this._pendingUpdates.length) {
+      const updates = this._pendingUpdates.slice(this._currentStoreIdx);
+      const store = this._makeStore(sink);
+      handleUpdates(updates, store);
+    }
   }
 
   _commitPendingUpdates(sink) {
