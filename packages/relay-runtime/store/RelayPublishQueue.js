@@ -42,21 +42,21 @@ type Payload = {
 
 type DataToCommit =
   | {
-  kind: 'client',
-  updater: StoreUpdater
-}
+      kind: 'client',
+      updater: StoreUpdater,
+    }
   | {
-  kind: 'optimistic',
-  updater: OptimisticUpdate
-}
+      kind: 'optimistic',
+      updater: OptimisticUpdate,
+    }
   | {
-  kind: 'payload',
-  payload: Payload,
-}
+      kind: 'payload',
+      payload: Payload,
+    }
   | {
-  kind: 'source',
-  source: RecordSource,
-};
+      kind: 'source',
+      source: RecordSource,
+    };
 
 /**
  * Coordinates the concurrent modification of a `Store`
@@ -76,20 +76,17 @@ class RelayPublishQueue {
   // The index of the most recent update applied to the backup to achieve the
   // current store state
   _currentStoreIdx: number;
-  // True if the next `run()` should publish to the store
-  // even if no changes to the sink has been made. Useful for queries.
-  _forcePublish: boolean;
   // True if the next `run()` should apply the backup and rerun all updates
   // performing a rebase.
   _pendingBackupRebase: boolean;
-  // All the pending updates, starting with the first optimistic updater
-  // that is awaiting a server response
+  // All the updates to be processed in order. Updates before the first
+  // `optimistic` are committed. The rest are applied and logged to the backup
+  // in the event of a revert.
   _pendingUpdates: Array<DataToCommit>;
 
   constructor(store: Store, handlerProvider?: ?HandlerProvider) {
     this._backup = new RelayInMemoryRecordSource();
     this._currentStoreIdx = 0;
-    this._forcePublish = false;
     this._handlerProvider = handlerProvider || null;
     this._pendingBackupRebase = false;
     this._pendingUpdates = [];
@@ -100,9 +97,10 @@ class RelayPublishQueue {
    * Schedule applying an optimistic updates on the next `run()`.
    */
   applyUpdate(updater: OptimisticUpdate): void {
-    invariant(findUpdaterIdx(this._pendingUpdates, updater) === -1,
+    invariant(
+      findUpdaterIdx(this._pendingUpdates, updater) === -1,
       'RelayPublishQueue: Cannot apply the same update function more than ' +
-      'once concurrently.',
+        'once concurrently.',
     );
     this._pendingUpdates.push({kind: 'optimistic', updater});
   }
@@ -123,8 +121,9 @@ class RelayPublishQueue {
    */
   revertAll(): void {
     this._pendingBackupRebase = true;
-    this._pendingUpdates = this._pendingUpdates
-      .filter((update) => update.kind !== 'optimistic');
+    this._pendingUpdates = this._pendingUpdates.filter(
+      update => update.kind !== 'optimistic',
+    );
   }
 
   /**
@@ -150,7 +149,6 @@ class RelayPublishQueue {
       }
     }
     this._pendingUpdates.push(serverData);
-    this._forcePublish = true;
   }
 
   /**
@@ -178,62 +176,74 @@ class RelayPublishQueue {
    * There is a single queue for all updates to guarantee linearizability
    */
   run(): void {
-    const sink = new RelayInMemoryRecordSource();
     if (this._pendingBackupRebase) {
       this._currentStoreIdx = 0;
       if (this._backup.size() || this._currentStoreIdx > 0) {
         this._store.publish(this._backup);
       }
     }
-    this._commitPendingUpdates(sink);
-    this._applyPendingUpdates(sink);
+    this._commitPendingUpdates();
+    this._applyPendingUpdates();
 
-    if (sink.size() || this._forcePublish) {
-      this._store.publish(sink);
-      this._forcePublish = false;
-    }
     this._pendingBackupRebase = false;
     this._currentStoreIdx = this._pendingUpdates.length;
     this._store.notify();
   }
 
-  _applyPendingUpdates(sink) {
+  _applyPendingUpdates() {
     if (this._currentStoreIdx < this._pendingUpdates.length) {
       const updates = this._pendingUpdates.slice(this._currentStoreIdx);
-      const store = this._makeStore(sink);
-      handleUpdates(updates, store);
+      this._handleUpdates(updates);
     }
   }
 
-  _commitPendingUpdates(sink) {
-    const firstOptimisticIdx = this._pendingUpdates
-      .findIndex((update) => update.kind === 'optimistic');
-    const endIdx = firstOptimisticIdx === -1 ? this._pendingUpdates.length : firstOptimisticIdx;
-    const updatesToCommit = this._pendingUpdates.splice(0, endIdx);
-    if (updatesToCommit.length) {
-      const store = this._makeStore(sink, true);
-      handleUpdates(updatesToCommit, store);
-      this._backup = new RelayInMemoryRecordSource();
+  _commitPendingUpdates() {
+    const firstOptimisticIdx = this._pendingUpdates.findIndex(
+      update => update.kind === 'optimistic',
+    );
+    const endIdx =
+      firstOptimisticIdx === -1
+        ? this._pendingUpdates.length
+        : firstOptimisticIdx;
+    if (endIdx > 0) {
+      const updatesToCommit = this._pendingUpdates.splice(0, endIdx);
+      this._handleUpdates(updatesToCommit, true);
+      this._backup.clear();
     }
   }
 
-  _makeStore(sink, isCommit) {
+  _handleUpdates(updates, isCommit) {
+    const sink = new RelayInMemoryRecordSource();
     const mutator = new RelayRecordSourceMutator(
       this._store.getSource(),
       sink,
       isCommit ? undefined : this._backup,
     );
-    return new RelayRecordSourceProxy(mutator, this._handlerProvider);
+    const store = new RelayRecordSourceProxy(mutator, this._handlerProvider);
+    for (let ii = 0; ii < updates.length; ii++) {
+      const update = updates[ii];
+      switch (update.kind) {
+        case 'client':
+          update.updater(store);
+          break;
+        case 'optimistic':
+          applyOptimisticUpdate(update.updater, store);
+          break;
+        case 'payload':
+          applyServerPayloadUpdate(update.payload, store);
+          break;
+        case 'source':
+          store.publishSource(update.source);
+          break;
+      }
+    }
+    this._store.publish(sink);
   }
 }
 
 function applyOptimisticUpdate(optimisticUpdate, store) {
   if (optimisticUpdate.operation) {
-    const {
-      selectorStoreUpdater,
-      operation,
-      response,
-    } = optimisticUpdate;
+    const {selectorStoreUpdater, operation, response} = optimisticUpdate;
 
     if (response) {
       const {source, fieldPayloads} = normalizeRelayPayload(
@@ -243,13 +253,17 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
       store.publishSource(source, fieldPayloads);
       if (selectorStoreUpdater) {
         const selectorData = lookupSelector(source, operation.fragment);
-        const selectorStore =
-          new RelayRecordSourceSelectorProxy(store, operation.fragment);
+        const selectorStore = new RelayRecordSourceSelectorProxy(
+          store,
+          operation.fragment,
+        );
         selectorStoreUpdater(selectorStore, selectorData);
       }
     } else {
-      const selectorStore =
-        new RelayRecordSourceSelectorProxy(store, operation.fragment);
+      const selectorStore = new RelayRecordSourceSelectorProxy(
+        store,
+        operation.fragment,
+      );
       selectorStoreUpdater && selectorStoreUpdater(selectorStore);
     }
   } else if (optimisticUpdate.storeUpdater) {
@@ -279,27 +293,7 @@ function findUpdaterIdx(
   updater: StoreUpdater | OptimisticUpdate,
 ): number {
   // $FlowFixMe
-  return updates.findIndex((update) => update.updater === updater);
-}
-
-function handleUpdates(updates, store) {
-  for (let ii = 0; ii < updates.length; ii++) {
-    const update = updates[ii];
-    switch (update.kind) {
-      case 'client':
-        update.updater(store);
-        break;
-      case 'optimistic':
-        applyOptimisticUpdate(update.updater, store);
-        break;
-      case 'payload':
-        applyServerPayloadUpdate(update.payload, store);
-        break;
-      case 'source':
-        store.publishSource(update.source);
-        break;
-    }
-  }
+  return updates.findIndex(update => update.updater === updater);
 }
 
 function lookupSelector(source, selector): ?SelectorData {

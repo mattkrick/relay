@@ -267,7 +267,7 @@ describe('RelayRecordSourceMutator', () => {
       sinkData.sf = {
         [ID_KEY]: 'sf',
         [TYPENAME_KEY]: 'Page',
-        timezone: 'Pacific Standard Time'
+        timezone: 'Pacific Standard Time',
       };
       backupMutator.copyFieldsFromRecord(sourceRecord, 'sf');
       expect(sinkData.sf.timezone).toEqual('Pacific Standard Time');

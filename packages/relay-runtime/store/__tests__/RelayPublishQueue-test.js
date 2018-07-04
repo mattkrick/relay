@@ -852,22 +852,27 @@ describe('RelayPublishQueue', () => {
         }
       `,
       );
-      queue.commitPayload(createOperationSelector(NameQuery, {id: '4'}), {
-        source: new RelayInMemoryRecordSource({
-          [ROOT_ID]: {
-            [ID_KEY]: ROOT_ID,
-            [TYPENAME_KEY]: ROOT_TYPE,
-            me: {[REF_KEY]: '4'},
-          },
-          4: {
-            ...initialData['4'],
-            id: '4',
-            name: 'zuck',
-          },
-        }),
+      queue.commitPayload(
+        createOperationSelector(NameQuery, {id: '4'}),
+        {
+          source: new RelayInMemoryRecordSource({
+            [ROOT_ID]: {
+              [ID_KEY]: ROOT_ID,
+              [TYPENAME_KEY]: ROOT_TYPE,
+              me: {[REF_KEY]: '4'},
+            },
+            4: {
+              ...initialData['4'],
+              id: '4',
+              name: 'zuck',
+            },
+          }),
+        },
+        undefined,
         // alert the publish queue that this commit reverts
         // the corresponding optimistic update
-      }, undefined, optimisticUpdate);
+        optimisticUpdate,
+      );
       queue.run();
       // Optimistic update should rebase, capitalizing the new name
       expect(sourceData).toEqual({
