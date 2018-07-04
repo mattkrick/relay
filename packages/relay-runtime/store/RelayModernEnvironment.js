@@ -235,7 +235,7 @@ class RelayModernEnvironment implements Environment {
               writeSelector,
               responsePayload,
               updater,
-              optimisticResponse
+              optimisticResponse,
             );
             optimisticResponse = undefined;
             this._publishQueue.run();
@@ -297,7 +297,7 @@ class RelayModernEnvironment implements Environment {
             operation,
             normalizePayload(payload),
             updater,
-            optimisticUpdate
+            optimisticUpdate,
           );
           optimisticUpdate = undefined;
           this._publishQueue.run();
