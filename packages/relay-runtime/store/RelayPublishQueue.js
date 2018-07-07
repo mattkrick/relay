@@ -179,7 +179,7 @@ class RelayPublishQueue {
   run(): void {
     if (this._pendingBackupRebase) {
       this._currentStoreIdx = 0;
-      if (this._backup.size() || this._currentStoreIdx > 0) {
+      if (this._backup.size()) {
         this._store.publish(this._backup);
       }
     }
@@ -200,7 +200,7 @@ class RelayPublishQueue {
 
   _commitPendingUpdates() {
     const firstOptimisticIdx = this._pendingUpdates.findIndex(
-      update => update.kind === 'optimistic',
+      ({kind}) => kind === 'optimistic',
     );
     const endIdx =
       firstOptimisticIdx === -1
@@ -260,8 +260,10 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
       store.publishSource(source, fieldPayloads);
       if (selectorStoreUpdater) {
         const selectorData = lookupSelector(source, operation.fragment);
-        const selectorStore =
-          new RelayRecordSourceSelectorProxy(store, operation.fragment);
+        const selectorStore = new RelayRecordSourceSelectorProxy(
+          store,
+          operation.fragment,
+        );
         ErrorUtils.applyWithGuard(
           selectorStoreUpdater,
           null,
@@ -271,8 +273,10 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
         );
       }
     } else {
-      const selectorStore =
-        new RelayRecordSourceSelectorProxy(store, operation.fragment);
+      const selectorStore = new RelayRecordSourceSelectorProxy(
+        store,
+        operation.fragment,
+      );
       ErrorUtils.applyWithGuard(
         selectorStoreUpdater,
         null,
