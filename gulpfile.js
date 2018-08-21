@@ -15,8 +15,10 @@ const babelOptions = require('./scripts/getBabelOptions')({
   ast: false,
   moduleMap: {
     '@babel/generator': '@babel/generator',
+    '@babel/parser': '@babel/parser',
     '@babel/types': '@babel/types',
     'babel-core': 'babel-core',
+    'babel-plugin-macros': 'babel-plugin-macros',
     'babel-generator': 'babel-generator',
     'babel-generator/lib/printer': 'babel-generator/lib/printer',
     'babel-polyfill': 'babel-polyfill',
@@ -30,7 +32,6 @@ const babelOptions = require('./scripts/getBabelOptions')({
     'babel-runtime/helpers/toConsumableArray': 'babel-runtime/helpers/toConsumableArray',
     'babel-traverse': 'babel-traverse',
     'babel-types': 'babel-types',
-    'babylon': 'babylon',
     chalk: 'chalk',
     child_process: 'child_process',
     crypto: 'crypto',
@@ -52,6 +53,7 @@ const babelOptions = require('./scripts/getBabelOptions')({
     ReactDOM: 'react-dom',
     ReactNative: 'react-native',
     RelayRuntime: 'relay-runtime',
+    'relay-runtime': 'relay-runtime',
     signedsource: 'signedsource',
     util: 'util',
     yargs: 'yargs',
@@ -152,6 +154,7 @@ const builds = [
     package: 'babel-plugin-relay',
     exports: {
       index: 'BabelPluginRelay.js',
+      macro: 'BabelPluginRelay.macro.js',
     },
     bundles: [
       {
@@ -234,7 +237,7 @@ const builds = [
   {
     package: 'relay-runtime',
     exports: {
-      index: 'RelayRuntime.js',
+      index: 'index.js',
     },
     bundles: [
       {
@@ -310,7 +313,7 @@ gulp.task('exports', ['copy-files', 'modules'], function() {
       fs.writeFileSync(
         path.join(DIST, build.package, exportName + '.js'),
         PRODUCTION_HEADER +
-          `\nmodule.exports = require('./lib/${build.exports[exportName]}');`
+          `\nmodule.exports = require('./lib/${build.exports[exportName]}');\n`
       )
     )
   );

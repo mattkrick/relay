@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -16,7 +16,7 @@ const RelayCompatContainer = require('./react/RelayCompatContainer');
 const RelayCompatMutations = require('./mutations/RelayCompatMutations');
 const RelayCompatPaginationContainer = require('./react/RelayCompatPaginationContainer');
 const RelayCompatRefetchContainer = require('./react/RelayCompatRefetchContainer');
-const RelayRuntime = require('RelayRuntime');
+const RelayRuntime = require('relay-runtime');
 
 export type {
   RelayPaginationProp,
@@ -37,7 +37,7 @@ export type {
   Selector,
   Snapshot,
   Variables,
-} from 'RelayRuntime';
+} from 'relay-runtime';
 
 /**
  * The public interface to React Relay which supports a compatibility mode to

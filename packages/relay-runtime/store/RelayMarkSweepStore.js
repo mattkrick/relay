@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -58,6 +58,8 @@ class RelayMarkSweepStore implements Store {
   _roots: Map<number, Selector>;
   _subscriptions: Set<Subscription>;
   _updatedRecordIDs: UpdatedRecords;
+  _gcHoldCounter: number;
+  _shouldScheduleGC: boolean;
 
   constructor(source: MutableRecordSource) {
     // Prevent mutation of a record from outside the store.
@@ -77,6 +79,8 @@ class RelayMarkSweepStore implements Store {
     this._roots = new Map();
     this._subscriptions = new Set();
     this._updatedRecordIDs = {};
+    this._gcHoldCounter = 0;
+    this._shouldScheduleGC = false;
   }
 
   getSource(): RecordSource {
@@ -133,6 +137,20 @@ class RelayMarkSweepStore implements Store {
     return {dispose};
   }
 
+  holdGC(): Disposable {
+    this._gcHoldCounter++;
+    const dispose = () => {
+      if (this._gcHoldCounter > 0) {
+        this._gcHoldCounter--;
+        if (this._gcHoldCounter === 0 && this._shouldScheduleGC) {
+          this._scheduleGC();
+          this._shouldScheduleGC = false;
+        }
+      }
+    };
+    return {dispose};
+  }
+
   // Internal API
   __getUpdatedRecordIDs(): UpdatedRecords {
     return this._updatedRecordIDs;
@@ -160,17 +178,21 @@ class RelayMarkSweepStore implements Store {
   }
 
   _scheduleGC() {
+    if (this._gcHoldCounter > 0) {
+      this._shouldScheduleGC = true;
+      return;
+    }
     if (!this._gcEnabled || this._hasScheduledGC) {
       return;
     }
     this._hasScheduledGC = true;
     resolveImmediate(() => {
-      this._gc();
+      this.__gc();
       this._hasScheduledGC = false;
     });
   }
 
-  _gc(): void {
+  __gc(): void {
     const references = new Set();
     // Mark all records that are traversable from a root
     this._roots.forEach(selector => {
@@ -253,6 +275,8 @@ RelayProfiler.instrumentMethods(RelayMarkSweepStore.prototype, {
   publish: 'RelayMarkSweepStore.prototype.publish',
   retain: 'RelayMarkSweepStore.prototype.retain',
   subscribe: 'RelayMarkSweepStore.prototype.subscribe',
+  __gc: 'RelayMarkSweepStore.prototype.__gc',
+  holdGC: 'RelayMarkSweepStore.prototype.holdGC',
 });
 
 module.exports = RelayMarkSweepStore;

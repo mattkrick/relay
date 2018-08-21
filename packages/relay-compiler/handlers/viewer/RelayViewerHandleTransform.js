@@ -4,15 +4,15 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
 'use strict';
 
-const {DEFAULT_HANDLE_KEY} = require('RelayRuntime');
 const {GraphQLObjectType} = require('graphql');
 const {IRTransformer, SchemaUtils} = require('graphql-compiler');
+const {DEFAULT_HANDLE_KEY} = require('relay-runtime');
 
 import type {CompilerContext, LinkedField} from 'graphql-compiler';
 

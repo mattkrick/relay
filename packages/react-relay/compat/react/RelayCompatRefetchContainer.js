@@ -21,7 +21,7 @@ import type {
   RelayRefetchProp,
 } from '../../modern/ReactRelayTypes';
 import type {RelayCompatContainer} from './RelayCompatTypes';
-import type {GraphQLTaggedNode} from 'RelayRuntime';
+import type {GraphQLTaggedNode} from 'relay-runtime';
 
 /**
  * Wrap the basic `createContainer()` function with logic to adapt to the
@@ -35,7 +35,7 @@ function createContainer<Props: {}, TComponent: React.ComponentType<Props>>(
   fragmentSpec: GraphQLTaggedNode | GeneratedNodeMap,
   taggedNode: GraphQLTaggedNode,
 ): RelayCompatContainer<
-  $RelayProps<React.ElementConfig<TComponent>, RelayRefetchProp>,
+  $RelayProps<React$ElementConfig<TComponent>, RelayRefetchProp>,
 > {
   return buildCompatContainer(
     Component,

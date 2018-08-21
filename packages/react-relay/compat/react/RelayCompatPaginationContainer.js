@@ -22,7 +22,7 @@ import type {
   RelayPaginationProp,
 } from '../../modern/ReactRelayTypes';
 import type {RelayCompatContainer} from './RelayCompatTypes';
-import type {GraphQLTaggedNode} from 'RelayRuntime';
+import type {GraphQLTaggedNode} from 'relay-runtime';
 
 /**
  * Wrap the basic `createContainer()` function with logic to adapt to the
@@ -36,7 +36,7 @@ function createContainer<Props: {}, TComponent: React.ComponentType<Props>>(
   fragmentSpec: GraphQLTaggedNode | GeneratedNodeMap,
   connectionConfig: ConnectionConfig,
 ): RelayCompatContainer<
-  $RelayProps<React.ElementConfig<TComponent>, RelayPaginationProp>,
+  $RelayProps<React$ElementConfig<TComponent>, RelayPaginationProp>,
 > {
   return buildCompatContainer(
     Component,

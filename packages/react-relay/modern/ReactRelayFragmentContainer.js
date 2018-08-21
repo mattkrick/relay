@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -19,7 +19,7 @@ const buildReactRelayContainer = require('./buildReactRelayContainer');
 const {assertRelayContext} = require('../classic/environment/RelayContext');
 const {profileContainer} = require('./ReactRelayContainerProfiler');
 const {getContainerName} = require('./ReactRelayContainerUtils');
-const {RelayProfiler, isScalarAndEqual} = require('RelayRuntime');
+const {RelayProfiler, isScalarAndEqual} = require('relay-runtime');
 
 import type {FragmentSpecResolver} from '../classic/environment/RelayCombinedEnvironmentTypes';
 import type {RelayEnvironmentInterface as ClassicEnvironment} from '../classic/store/RelayEnvironment';
@@ -30,7 +30,7 @@ import type {
   IEnvironment,
   RelayContext,
   Variables,
-} from 'RelayRuntime';
+} from 'relay-runtime';
 
 type ContainerProps = $FlowFixMeProps;
 type ContainerState = {
@@ -55,7 +55,7 @@ function createContainerWithFragments<
   Component: TComponent,
   fragments: FragmentMap,
 ): React.ComponentType<
-  $RelayProps<React.ElementConfig<TComponent>, RelayProp>,
+  $RelayProps<React$ElementConfig<TComponent>, RelayProp>,
 > {
   const containerName = getContainerName(Component);
 
@@ -284,7 +284,7 @@ function createContainer<Props: {}, TComponent: React.ComponentType<Props>>(
   Component: TComponent,
   fragmentSpec: GraphQLTaggedNode | GeneratedNodeMap,
 ): React.ComponentType<
-  $RelayProps<React.ElementConfig<TComponent>, RelayProp>,
+  $RelayProps<React$ElementConfig<TComponent>, RelayProp>,
 > {
   return buildReactRelayContainer(
     Component,

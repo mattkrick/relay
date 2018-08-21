@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -13,7 +13,7 @@
 const React = require('React');
 const RelayPropTypes = require('../classic/container/RelayPropTypes');
 
-import type {RelayContext} from 'RelayRuntime';
+import type {RelayContext} from 'relay-runtime';
 
 /**
  * Decorates a component and injects Relay context as a prop.
@@ -23,7 +23,7 @@ function injectContext<TProps, TComponent: React.ComponentType<TProps>>(
   Component: TComponent,
 ): React.ComponentType<
   $Diff<
-    React.ElementConfig<TComponent>,
+    React$ElementConfig<TComponent>,
     {
       relay: RelayContext,
     },

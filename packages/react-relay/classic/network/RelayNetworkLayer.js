@@ -17,7 +17,7 @@ const resolveImmediate = require('resolveImmediate');
 const throwFailedPromise = require('../util/throwFailedPromise');
 const warning = require('warning');
 
-const {RelayProfiler} = require('RelayRuntime');
+const {RelayProfiler} = require('relay-runtime');
 
 import type RelayQuery from '../query/RelayQuery';
 import type {ChangeSubscription, NetworkLayer} from '../tools/RelayTypes';
@@ -170,7 +170,14 @@ function profileQueue(currentQueue: Array<RelayQueryRequest>): void {
         firstResultProfiler = null;
       }
     };
-    query.done(onSettle, onSettle);
+    query
+      .getPromise()
+      .then(onSettle, onSettle)
+      .catch(error => {
+        setTimeout(() => {
+          throw error;
+        }, 0);
+      });
   });
 }
 

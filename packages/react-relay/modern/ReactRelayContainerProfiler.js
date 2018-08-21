@@ -4,13 +4,13 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
 'use strict';
 
-const {RelayProfiler} = require('RelayRuntime');
+const {RelayProfiler} = require('relay-runtime');
 
 function profileContainer(Container: $FlowFixMe, containerName: string): void {
   RelayProfiler.instrumentMethods(Container.prototype, {

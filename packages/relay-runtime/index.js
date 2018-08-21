@@ -16,11 +16,13 @@ const RelayConnectionInterface = require('./handlers/connection/RelayConnectionI
 const RelayCore = require('./store/RelayCore');
 const RelayDeclarativeMutationConfig = require('./mutations/RelayDeclarativeMutationConfig');
 const RelayDefaultHandleKey = require('./util/RelayDefaultHandleKey');
+const RelayError = require('./util/RelayError');
 const RelayInMemoryRecordSource = require('./store/RelayInMemoryRecordSource');
 const RelayMarkSweepStore = require('./store/RelayMarkSweepStore');
 const RelayModernEnvironment = require('./store/RelayModernEnvironment');
 const RelayModernGraphQLTag = require('./query/RelayModernGraphQLTag');
 const RelayNetwork = require('./network/RelayNetwork');
+const RelayNetworkLoggerTransaction = require('./network/RelayNetworkLoggerTransaction');
 const RelayObservable = require('./network/RelayObservable');
 const RelayProfiler = require('./util/RelayProfiler');
 const RelayQueryResponseCache = require('./network/RelayQueryResponseCache');
@@ -30,8 +32,10 @@ const RelayViewerHandler = require('./handlers/viewer/RelayViewerHandler');
 const applyRelayModernOptimisticMutation = require('./mutations/applyRelayModernOptimisticMutation');
 const commitLocalUpdate = require('./mutations/commitLocalUpdate');
 const commitRelayModernMutation = require('./mutations/commitRelayModernMutation');
+const createRelayNetworkLogger = require('./network/createRelayNetworkLogger');
 const deepFreeze = require('./util/deepFreeze');
 const fetchRelayModernQuery = require('./query/fetchRelayModernQuery');
+const generateRelayClientID = require('./store/generateRelayClientID');
 const getRelayHandleKey = require('./util/getRelayHandleKey');
 const isRelayModernEnvironment = require('./store/isRelayModernEnvironment');
 const isScalarAndEqual = require('./util/isScalarAndEqual');
@@ -51,14 +55,19 @@ export type {
   DeclarativeMutationConfig,
   MutationType,
   RangeOperation,
+  RangeBehaviors,
 } from './mutations/RelayDeclarativeMutationConfig';
 export type {
   OptimisticMutationConfig,
 } from './mutations/applyRelayModernOptimisticMutation';
 export type {MutationConfig} from './mutations/commitRelayModernMutation';
+export type {RelayNetworkLog} from './network/RelayNetworkLoggerTransaction';
 export type {
+  EventPayload,
+  ExecutePayload,
   GraphQLResponse,
   PayloadError,
+  StreamPayload,
   UploadableMap,
 } from './network/RelayNetworkTypes';
 export type {
@@ -67,6 +76,7 @@ export type {
   Subscribable,
   Subscription,
 } from './network/RelayObservable';
+export type {GraphiQLPrinter} from './network/createRelayNetworkLogger';
 export type {GraphQLTaggedNode} from './query/RelayModernGraphQLTag';
 export type {RecordState} from './store/RelayRecordState';
 export type {
@@ -74,20 +84,31 @@ export type {
   FragmentMap,
   FragmentReference,
   OperationSelector,
+  RecordProxy,
+  RecordSourceProxy,
+  RecordSourceSelectorProxy,
   RelayContext,
   Selector,
   SelectorStoreUpdater,
   Snapshot,
+  StoreUpdater,
 } from './store/RelayStoreTypes';
 export type {
   GraphQLSubscriptionConfig,
 } from './subscription/requestRelaySubscription';
 export type {
-  GeneratedNode,
-  ConcreteRequest,
+  ArgumentDependency,
+  ConcreteArgument,
+  ConcreteArgumentDefinition,
   ConcreteBatchRequest,
-  ConcreteOperation,
+  ConcreteField,
   ConcreteFragment,
+  ConcreteLinkedField,
+  ConcreteOperation,
+  ConcreteRequest,
+  ConcreteScalarField,
+  ConcreteSelection,
+  GeneratedNode,
   RequestNode,
 } from './util/RelayConcreteNode';
 export type {
@@ -170,10 +191,14 @@ module.exports = {
 
   // INTERNAL-ONLY: These exports might be removed at any point.
   RelayConcreteNode: RelayConcreteNode,
+  RelayError: RelayError,
+  RelayNetworkLoggerTransaction: RelayNetworkLoggerTransaction,
   DEFAULT_HANDLE_KEY: RelayDefaultHandleKey.DEFAULT_HANDLE_KEY,
   ROOT_ID: RelayStoreUtils.ROOT_ID,
 
+  createRelayNetworkLogger: createRelayNetworkLogger,
   deepFreeze: deepFreeze,
+  generateClientID: generateRelayClientID,
   getRelayHandleKey: getRelayHandleKey,
   isScalarAndEqual: isScalarAndEqual,
   recycleNodesInto: recycleNodesInto,

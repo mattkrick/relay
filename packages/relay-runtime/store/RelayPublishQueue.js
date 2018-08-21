@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -21,6 +21,7 @@ const invariant = require('invariant');
 const normalizeRelayPayload = require('./normalizeRelayPayload');
 
 import type {HandlerProvider} from '../handlers/RelayDefaultHandlerProvider';
+import type {Disposable} from '../util/RelayRuntimeTypes';
 import type {
   HandleFieldPayload,
   MutableRecordSource,
@@ -77,6 +78,8 @@ class RelayPublishQueue {
   // The index of the most recent update applied to the backup to achieve the
   // current store state
   _currentStoreIdx: number;
+  // Garbage collection hold, should rerun gc on dispose
+  _gcHold: ?Disposable;
   // True if the next `run()` should apply the backup and rerun all updates
   // performing a rebase.
   _pendingBackupRebase: boolean;
@@ -88,6 +91,7 @@ class RelayPublishQueue {
   constructor(store: Store, handlerProvider?: ?HandlerProvider) {
     this._backup = new RelayInMemoryRecordSource();
     this._currentStoreIdx = 0;
+    this._gcHold = null;
     this._handlerProvider = handlerProvider || null;
     this._pendingBackupRebase = false;
     this._pendingUpdates = [];
@@ -195,6 +199,10 @@ class RelayPublishQueue {
     if (this._currentStoreIdx < this._pendingUpdates.length) {
       const updates = this._pendingUpdates.slice(this._currentStoreIdx);
       this._handleUpdates(updates);
+      this._gcHold = this._store.holdGC();
+    } else if (this._gcHold) {
+      this._gcHold.dispose();
+      this._gcHold = null;
     }
   }
 

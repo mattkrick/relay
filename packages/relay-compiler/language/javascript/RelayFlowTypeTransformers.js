@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -12,7 +12,7 @@
 
 const t = require('@babel/types');
 
-const {readOnlyArrayOfType} = require('RelayFlowBabelFactories');
+const {readOnlyArrayOfType} = require('./RelayFlowBabelFactories');
 const {
   GraphQLEnumType,
   GraphQLInputObjectType,

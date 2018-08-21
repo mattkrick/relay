@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -17,7 +17,7 @@ import type {
   Observable,
   SelectorStoreUpdater,
   Variables,
-} from 'RelayRuntime';
+} from 'relay-runtime';
 
 /**
  * Arbitrary data e.g. received by a container as props.

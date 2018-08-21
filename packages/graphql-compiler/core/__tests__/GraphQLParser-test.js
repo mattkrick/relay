@@ -5,13 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @emails
- * @flow
+ * @flow strict-local
  * @format
  */
 
 'use strict';
 
-const GraphQLParser = require('GraphQLParser');
+const GraphQLParser = require('../GraphQLParser');
 const RelayTestSchema = require('RelayTestSchema');
 
 /**

@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -12,15 +12,15 @@
 
 const invariant = require('invariant');
 
-import type {ExecutePayload} from 'RelayNetworkTypes';
 import type {
   CacheConfig,
   Disposable,
+  ExecutePayload,
   IEnvironment,
+  Observable,
   OperationSelector,
   Snapshot,
-} from 'RelayRuntime';
-import type {Observable} from 'RelayRuntime';
+} from 'relay-runtime';
 
 type OnDataChange = null | (({error?: Error, snapshot?: Snapshot}) => void);
 

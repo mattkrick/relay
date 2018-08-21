@@ -26,7 +26,7 @@ const readRelayQueryData = require('./readRelayQueryData');
 const relayUnstableBatchedUpdates = require('../tools/relayUnstableBatchedUpdates');
 const warning = require('warning');
 
-const {Observable, deepFreeze, recycleNodesInto} = require('RelayRuntime');
+const {Observable, deepFreeze, recycleNodesInto} = require('relay-runtime');
 
 import type {
   Environment,
@@ -63,7 +63,7 @@ import type {
   SelectorStoreUpdater,
   UploadableMap,
   Variables,
-} from 'RelayRuntime';
+} from 'relay-runtime';
 
 export type FragmentResolver = {
   dispose(): void,
@@ -358,7 +358,7 @@ class RelayEnvironment implements Environment, RelayEnvironmentInterface {
       operation.variables,
     );
     const request = new RelayQueryRequest(query);
-    request.then(
+    request.getPromise().then(
       payload => {
         if (isDisposed) {
           return;
@@ -385,21 +385,6 @@ class RelayEnvironment implements Environment, RelayEnvironmentInterface {
       this._storeData.getNetworkLayer().sendQueries([request]);
     });
     return {dispose};
-  }
-
-  streamQuery(config: {
-    cacheConfig?: ?CacheConfig,
-    onCompleted?: ?() => void,
-    onError?: ?(error: Error) => void,
-    onNext?: ?(selector: Selector) => void,
-    operation: OperationSelector,
-  }): Disposable {
-    warning(
-      false,
-      'environment.streamQuery() is deprecated. Update to the latest ' +
-        'version of react-relay, and use environment.execute().',
-    );
-    return this.sendQuery(config);
   }
 
   execute({

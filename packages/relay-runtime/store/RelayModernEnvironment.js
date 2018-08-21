@@ -29,6 +29,7 @@ import type {
   Network,
   PayloadData,
   PayloadError,
+  StreamPayload,
   UploadableMap,
 } from '../network/RelayNetworkTypes';
 import type RelayObservable from '../network/RelayObservable';
@@ -252,6 +253,87 @@ class RelayModernEnvironment implements Environment {
   }
 
   /**
+   * Returns an Observable of StreamPayload. Similar to .execute({...}),
+   * except the stream can also return events, which is especially useful when
+   * executing a GraphQL subscription. However, events are not commited to
+   * the publish queue, they are simply ignored in the .do({...}) stream.
+   */
+  executeWithEvents({
+    operation,
+    cacheConfig,
+    updater,
+  }: {
+    operation: OperationSelector,
+    cacheConfig?: ?CacheConfig,
+    updater?: ?SelectorStoreUpdater,
+  }): RelayObservable<StreamPayload> {
+    let optimisticResponse;
+    return this._network
+      .executeWithEvents(operation.node, operation.variables, cacheConfig || {})
+      .do({
+        next: executePayload => {
+          if (executePayload.kind !== 'data') {
+            return;
+          }
+          const responsePayload = normalizePayload(executePayload);
+          const {source, fieldPayloads, deferrableSelections} = responsePayload;
+          for (const selectionKey of deferrableSelections || new Set()) {
+            this._deferrableSelections.add(selectionKey);
+          }
+          if (executePayload.isOptimistic) {
+            invariant(
+              optimisticResponse == null,
+              'environment.execute: only support one optimistic respnose per ' +
+                'execute.',
+            );
+            optimisticResponse = {
+              source: source,
+              fieldPayloads: fieldPayloads,
+            };
+            this._publishQueue.applyUpdate(optimisticResponse);
+            this._publishQueue.run();
+          } else {
+            if (optimisticResponse) {
+              this._publishQueue.revertUpdate(optimisticResponse);
+              optimisticResponse = undefined;
+            }
+            const writeSelector = createOperationSelector(
+              operation.node,
+              executePayload.variables,
+              executePayload.operation,
+            );
+            if (executePayload.operation.kind === 'DeferrableOperation') {
+              const fragmentKey = deferrableFragmentKey(
+                executePayload.variables[
+                  executePayload.operation.rootFieldVariable
+                ],
+                executePayload.operation.fragmentName,
+                getOperationVariables(
+                  executePayload.operation,
+                  executePayload.variables,
+                ),
+              );
+              this._deferrableSelections.delete(fragmentKey);
+            }
+            this._publishQueue.commitPayload(
+              writeSelector,
+              responsePayload,
+              updater,
+            );
+            this._publishQueue.run();
+          }
+        },
+      })
+      .finally(() => {
+        if (optimisticResponse) {
+          this._publishQueue.revertUpdate(optimisticResponse);
+          optimisticResponse = undefined;
+          this._publishQueue.run();
+        }
+      });
+  }
+
+  /**
    * Returns an Observable of ExecutePayload resulting from executing the
    * provided Mutation operation, the result of which is then normalized and
    * committed to the publish queue along with an optional optimistic response
@@ -348,34 +430,6 @@ class RelayModernEnvironment implements Environment {
   }
 
   /**
-   * @deprecated Use Environment.execute().subscribe()
-   */
-  streamQuery({
-    cacheConfig,
-    onCompleted,
-    onError,
-    onNext,
-    operation,
-  }: {
-    cacheConfig?: ?CacheConfig,
-    onCompleted?: ?() => void,
-    onError?: ?(error: Error) => void,
-    onNext?: ?(payload: ExecutePayload) => void,
-    operation: OperationSelector,
-  }): Disposable {
-    warning(
-      false,
-      'environment.streamQuery() is deprecated. Update to the latest ' +
-        'version of react-relay, and use environment.execute().',
-    );
-    return this.execute({operation, cacheConfig}).subscribeLegacy({
-      onNext,
-      onError,
-      onCompleted,
-    });
-  }
-
-  /**
    * @deprecated Use Environment.executeMutation().subscribe()
    */
   sendMutation({
@@ -416,34 +470,6 @@ class RelayModernEnvironment implements Environment {
       onError,
       onCompleted,
     });
-  }
-
-  /**
-   * @deprecated Use Environment.execute().subscribe()
-   */
-  sendSubscription({
-    onCompleted,
-    onNext,
-    onError,
-    operation,
-    updater,
-  }: {
-    onCompleted?: ?(errors: ?Array<PayloadError>) => void,
-    onNext?: ?(payload: ExecutePayload) => void,
-    onError?: ?(error: Error) => void,
-    operation: OperationSelector,
-    updater?: ?SelectorStoreUpdater,
-  }): Disposable {
-    warning(
-      false,
-      'environment.sendSubscription() is deprecated. Update to the latest ' +
-        'version of react-relay, and use environment.execute().',
-    );
-    return this.execute({
-      operation,
-      updater,
-      cacheConfig: {force: true},
-    }).subscribeLegacy({onNext, onError, onCompleted});
   }
 }
 

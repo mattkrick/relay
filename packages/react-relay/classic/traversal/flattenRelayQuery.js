@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -13,7 +13,7 @@
 const RelayQuery = require('../query/RelayQuery');
 const RelayQueryVisitor = require('../query/RelayQueryVisitor');
 
-const {RelayProfiler} = require('RelayRuntime');
+const {RelayProfiler} = require('relay-runtime');
 
 type FlattenedQuery = {
   node: RelayQuery.Node,
