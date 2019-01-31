@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -14,8 +14,15 @@ const RelayModernFragmentSpecResolver = require('./RelayModernFragmentSpecResolv
 
 const warning = require('warning');
 
-const {getFragment, getRequest} = require('../query/RelayModernGraphQLTag');
-const {createOperationSelector} = require('./RelayModernOperationSelector');
+const {
+  getFragment,
+  getPaginationFragment,
+  getRefetchableFragment,
+  getRequest,
+  isFragment,
+  isRequest,
+} = require('../query/RelayModernGraphQLTag');
+const {createOperationDescriptor} = require('./RelayModernOperationDescriptor');
 const {
   areEqualSelectors,
   getDataIDsFromObject,
@@ -25,11 +32,12 @@ const {
   getVariablesFromObject,
 } = require('./RelayModernSelector');
 
-import type {FragmentMap, RelayContext} from './RelayStoreTypes';
+import type {Props} from '../util/RelayCombinedEnvironmentTypes';
 import type {
+  FragmentMap,
   FragmentSpecResolver,
-  Props,
-} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
+  RelayContext,
+} from './RelayStoreTypes';
 
 function createFragmentSpecResolver(
   context: RelayContext,
@@ -63,12 +71,16 @@ function createFragmentSpecResolver(
 module.exports = {
   areEqualSelectors,
   createFragmentSpecResolver,
-  createOperationSelector,
+  createOperationDescriptor,
   getDataIDsFromObject,
   getFragment,
+  getPaginationFragment,
+  getRefetchableFragment,
   getRequest,
   getSelector,
   getSelectorList,
   getSelectorsFromObject,
   getVariablesFromObject,
+  isFragment,
+  isRequest,
 };

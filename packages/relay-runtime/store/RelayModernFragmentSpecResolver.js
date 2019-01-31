@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -13,24 +13,26 @@
 const invariant = require('invariant');
 const isScalarAndEqual = require('../util/isScalarAndEqual');
 
+const {createOperationDescriptor} = require('./RelayModernOperationDescriptor');
 const {
   areEqualSelectors,
   getSelectorsFromObject,
 } = require('./RelayModernSelector');
 
+import type {
+  FragmentSpecResults,
+  SelectorData,
+} from '../util/RelayCombinedEnvironmentTypes';
+import type {ConcreteRequest} from '../util/RelayConcreteNode';
 import type {Disposable, Variables} from '../util/RelayRuntimeTypes';
 import type {
   Environment,
   FragmentMap,
+  FragmentSpecResolver,
+  OwnedReaderSelector,
   RelayContext,
-  Selector,
   Snapshot,
 } from './RelayStoreTypes';
-import type {
-  FragmentSpecResolver,
-  FragmentSpecResults,
-  SelectorData,
-} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
 
 type Props = {[key: string]: mixed};
 type Resolvers = {[key: string]: ?(SelectorListResolver | SelectorResolver)};
@@ -120,43 +122,30 @@ class RelayModernFragmentSpecResolver implements FragmentSpecResolver {
     return this._data;
   }
 
-  isLoading(): boolean {
-    for (const key in this._resolvers) {
-      if (
-        this._resolvers.hasOwnProperty(key) &&
-        this._resolvers[key] &&
-        this._resolvers[key].isLoading()
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   setCallback(callback: () => void): void {
     this._callback = callback;
   }
 
   setProps(props: Props): void {
-    const selectors = getSelectorsFromObject(
+    const ownedSelectors = getSelectorsFromObject(
       this._context.variables,
       this._fragments,
       props,
     );
-    for (const key in selectors) {
-      if (selectors.hasOwnProperty(key)) {
-        const selector = selectors[key];
+    for (const key in ownedSelectors) {
+      if (ownedSelectors.hasOwnProperty(key)) {
+        const ownedSelector = ownedSelectors[key];
         let resolver = this._resolvers[key];
-        if (selector == null) {
+        if (ownedSelector == null) {
           if (resolver != null) {
             resolver.dispose();
           }
           resolver = null;
-        } else if (Array.isArray(selector)) {
+        } else if (Array.isArray(ownedSelector)) {
           if (resolver == null) {
             resolver = new SelectorListResolver(
               this._context.environment,
-              selector,
+              ownedSelector,
               this._onChange,
             );
           } else {
@@ -165,13 +154,13 @@ class RelayModernFragmentSpecResolver implements FragmentSpecResolver {
               'RelayModernFragmentSpecResolver: Expected prop `%s` to always be an array.',
               key,
             );
-            resolver.setSelectors(selector);
+            resolver.setSelectors(ownedSelector);
           }
         } else {
           if (resolver == null) {
             resolver = new SelectorResolver(
               this._context.environment,
-              selector,
+              ownedSelector,
               this._onChange,
             );
           } else {
@@ -180,7 +169,7 @@ class RelayModernFragmentSpecResolver implements FragmentSpecResolver {
               'RelayModernFragmentSpecResolver: Expected prop `%s` to always be an object.',
               key,
             );
-            resolver.setSelector(selector);
+            resolver.setSelector(ownedSelector);
           }
         }
         this._resolvers[key] = resolver;
@@ -190,12 +179,12 @@ class RelayModernFragmentSpecResolver implements FragmentSpecResolver {
     this._stale = true;
   }
 
-  setVariables(variables: Variables): void {
+  setVariables(variables: Variables, request?: ConcreteRequest): void {
     for (const key in this._resolvers) {
       if (this._resolvers.hasOwnProperty(key)) {
         const resolver = this._resolvers[key];
         if (resolver) {
-          resolver.setVariables(variables);
+          resolver.setVariables(variables, request);
         }
       }
     }
@@ -218,19 +207,22 @@ class SelectorResolver {
   _callback: () => void;
   _data: ?SelectorData;
   _environment: Environment;
-  _selector: Selector;
+  _ownedSelector: OwnedReaderSelector;
   _subscription: ?Disposable;
 
   constructor(
     environment: Environment,
-    selector: Selector,
+    ownedSelector: OwnedReaderSelector,
     callback: () => void,
   ) {
-    const snapshot = environment.lookup(selector);
+    const snapshot = environment.lookup(
+      ownedSelector.selector,
+      ownedSelector.owner,
+    );
     this._callback = callback;
     this._data = snapshot.data;
     this._environment = environment;
-    this._selector = selector;
+    this._ownedSelector = ownedSelector;
     this._subscription = environment.subscribe(snapshot, this._onChange);
   }
 
@@ -245,30 +237,32 @@ class SelectorResolver {
     return this._data;
   }
 
-  setSelector(selector: Selector): void {
+  setSelector(ownedSelector: OwnedReaderSelector): void {
     if (
       this._subscription != null &&
-      areEqualSelectors(selector, this._selector)
+      areEqualSelectors(ownedSelector, this._ownedSelector)
     ) {
       return;
     }
     this.dispose();
-    const snapshot = this._environment.lookup(selector);
+    const snapshot = this._environment.lookup(
+      ownedSelector.selector,
+      ownedSelector.owner,
+    );
     this._data = snapshot.data;
-    this._selector = selector;
+    this._ownedSelector = ownedSelector;
     this._subscription = this._environment.subscribe(snapshot, this._onChange);
   }
 
-  setVariables(variables: Variables): void {
-    const selector = {
-      ...this._selector,
-      variables,
+  setVariables(variables: Variables, request?: ConcreteRequest): void {
+    const ownedSelector = {
+      owner: request ? createOperationDescriptor(request, variables) : null,
+      selector: {
+        ...this._ownedSelector.selector,
+        variables,
+      },
     };
-    this.setSelector(selector);
-  }
-
-  isLoading(): boolean {
-    return this._environment.isSelectorLoading(this._selector);
+    this.setSelector(ownedSelector);
   }
 
   _onChange = (snapshot: Snapshot): void => {
@@ -289,7 +283,7 @@ class SelectorListResolver {
 
   constructor(
     environment: Environment,
-    selectors: Array<Selector>,
+    selectors: Array<OwnedReaderSelector>,
     callback: () => void,
   ) {
     this._callback = callback;
@@ -328,7 +322,7 @@ class SelectorListResolver {
     return this._data;
   }
 
-  setSelectors(selectors: Array<Selector>): void {
+  setSelectors(selectors: Array<OwnedReaderSelector>): void {
     while (this._resolvers.length > selectors.length) {
       const resolver = this._resolvers.pop();
       resolver.dispose();
@@ -347,13 +341,11 @@ class SelectorListResolver {
     this._stale = true;
   }
 
-  setVariables(variables: Variables): void {
-    this._resolvers.forEach(resolver => resolver.setVariables(variables));
+  setVariables(variables: Variables, request?: ConcreteRequest): void {
+    this._resolvers.forEach(resolver =>
+      resolver.setVariables(variables, request),
+    );
     this._stale = true;
-  }
-
-  isLoading(): boolean {
-    return this._resolvers.some(resolver => resolver.isLoading());
   }
 
   _onChange = (data: ?Object): void => {

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -45,14 +45,14 @@ function applyRelayModernOptimisticMutation(
       'both environments.\n' +
       'See: http://facebook.github.io/relay/docs/relay-compat.html',
   );
-  const {createOperationSelector, getRequest} = environment.unstable_internal;
+  const {createOperationDescriptor, getRequest} = environment.unstable_internal;
   const mutation = getRequest(config.mutation);
-  if (mutation.operationKind !== 'mutation') {
+  if (mutation.params.operationKind !== 'mutation') {
     throw new Error('commitRelayModernMutation: Expected mutation operation');
   }
   let {optimisticUpdater} = config;
   const {configs, optimisticResponse, variables} = config;
-  const operation = createOperationSelector(mutation, variables);
+  const operation = createOperationDescriptor(mutation, variables);
   if (configs) {
     ({optimisticUpdater} = RelayDeclarativeMutationConfig.convert(
       configs,

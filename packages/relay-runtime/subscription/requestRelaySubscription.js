@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -19,37 +19,29 @@ import type {GraphQLTaggedNode} from '../query/RelayModernGraphQLTag';
 import type {Environment, SelectorStoreUpdater} from '../store/RelayStoreTypes';
 import type {Disposable, Variables} from '../util/RelayRuntimeTypes';
 
-export type GraphQLSubscriptionConfig = {|
+export type GraphQLSubscriptionConfig<TSubscriptionPayload> = {|
   configs?: Array<DeclarativeMutationConfig>,
   subscription: GraphQLTaggedNode,
   variables: Variables,
   onCompleted?: ?() => void,
   onError?: ?(error: Error) => void,
-  onNext?: ?(response: ?Object) => void,
+  onNext?: ?(response: ?TSubscriptionPayload) => void,
   updater?: ?SelectorStoreUpdater,
-  receiveEvents?: boolean,
 |};
 
-function requestRelaySubscription(
+function requestRelaySubscription<TSubscriptionPayload>(
   environment: Environment,
-  config: GraphQLSubscriptionConfig,
+  config: GraphQLSubscriptionConfig<TSubscriptionPayload>,
 ): Disposable {
-  const {createOperationSelector, getRequest} = environment.unstable_internal;
+  const {createOperationDescriptor, getRequest} = environment.unstable_internal;
   const subscription = getRequest(config.subscription);
-  if (subscription.operationKind !== 'subscription') {
+  if (subscription.params.operationKind !== 'subscription') {
     throw new Error(
       'requestRelaySubscription: Must use Subscription operation',
     );
   }
-  const {
-    configs,
-    onCompleted,
-    onError,
-    onNext,
-    variables,
-    receiveEvents,
-  } = config;
-  const operation = createOperationSelector(subscription, variables);
+  const {configs, onCompleted, onError, onNext, variables} = config;
+  const operation = createOperationDescriptor(subscription, variables);
 
   warning(
     !(config.updater && configs),
@@ -65,41 +57,22 @@ function requestRelaySubscription(
       )
     : config;
 
-  if (receiveEvents) {
-    return environment
-      .executeWithEvents({
-        operation,
-        updater,
-        cacheConfig: {force: true},
-      })
-      .subscribeLegacy({
-        onNext: payload => {
-          if (onNext) {
-            if (payload.kind === 'event') {
-              onNext(payload);
-            } else {
-              const data = environment.lookup(operation.fragment).data;
-              onNext({kind: 'data', ...data});
-            }
-          }
-        },
-        onError,
-        onCompleted,
-      });
-  } else {
-    return environment
-      .execute({
-        operation,
-        updater,
-        cacheConfig: {force: true},
-      })
-      .map(() => environment.lookup(operation.fragment).data)
-      .subscribeLegacy({
-        onNext,
-        onError,
-        onCompleted,
-      });
-  }
+  return environment
+    .execute({
+      operation,
+      updater,
+      cacheConfig: {force: true},
+    })
+    .map(() => {
+      const data = environment.lookup(operation.fragment).data;
+      // $FlowFixMe
+      return (data: TSubscriptionPayload);
+    })
+    .subscribeLegacy({
+      onNext,
+      onError,
+      onCompleted,
+    });
 }
 
 module.exports = requestRelaySubscription;

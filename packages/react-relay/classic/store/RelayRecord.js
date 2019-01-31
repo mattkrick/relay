@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,7 +17,7 @@ import type {DataID, Variables} from 'relay-runtime';
 export type Record = {
   // Records may contain many other fields as [fieldName: string]: mixed
   __dataID__: string,
-  __filterCalls__?: Array<Call>,
+  __filterCalls__?: $ReadOnlyArray<Call>,
   __forceIndex__?: number,
   __mutationIDs__?: Array<ClientMutationID>,
   __mutationStatus__?: string,
@@ -89,6 +89,7 @@ const RelayRecord = {
     }
   },
 
+  // $FlowFixMe
   getDataID(record: Record): string {
     return record.__dataID__;
   },

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -111,29 +111,36 @@ function createMockEnvironment(options: {
       return Observable.from(cachedPayload);
     }
 
-    const nextRequest = {request, variables, cacheConfig};
+    const nextRequest = {request: request, variables, cacheConfig};
     pendingRequests = pendingRequests.concat([nextRequest]);
 
     return Observable.create(sink => {
       nextRequest.sink = sink;
       return () => {
         pendingRequests = pendingRequests.filter(
-          pending => pending !== nextRequest,
+          pending => !areEqual(pending, nextRequest),
         );
       };
     });
   };
 
-  function getRequest(request) {
-    const foundRequest = pendingRequests.find(
-      pending => pending.request === request,
+  // The same request may be made by multiple query renderers
+  function getRequests(request) {
+    const foundRequests = pendingRequests.filter(pending =>
+      areEqual(pending.request, request.params),
     );
     invariant(
-      foundRequest && foundRequest.sink,
-      'MockEnvironment: Cannot respond to `%s`, it has not been requested yet.',
-      request.name,
+      foundRequests.length,
+      'MockEnvironment: Cannot respond to request, it has not been requested yet.',
     );
-    return foundRequest;
+    foundRequests.forEach(foundRequest => {
+      invariant(
+        foundRequest.sink,
+        'MockEnvironment: Cannot respond to `%s`, it has not been requested yet.',
+        foundRequest.name,
+      );
+    });
+    return foundRequests;
   }
 
   function ensureValidPayload(payload) {
@@ -147,7 +154,7 @@ function createMockEnvironment(options: {
   }
 
   const cachePayload = (request, variables, payload) => {
-    const {id, text} = request;
+    const {id, text} = request.params;
     const cacheID = id || text;
     cache.set(cacheID, variables, payload);
   };
@@ -173,7 +180,7 @@ function createMockEnvironment(options: {
   const isLoading = (request, variables, cacheConfig) => {
     return pendingRequests.some(
       pending =>
-        pending.request === request &&
+        areEqual(pending.request, request.params) &&
         areEqual(pending.variables, variables) &&
         areEqual(pending.cacheConfig, cacheConfig || {}),
     );
@@ -184,32 +191,28 @@ function createMockEnvironment(options: {
     if (typeof error === 'string') {
       error = new Error(error);
     }
-    getRequest(request).sink.error(error);
+    getRequests(request).forEach(foundRequest =>
+      foundRequest.sink.error(error),
+    );
   };
 
   const nextValue = (request, payload) => {
-    const {sink, variables} = getRequest(request);
-    sink.next({
-      kind: 'data',
-      operation: request.operation,
-      variables: variables,
-      response: ensureValidPayload(payload),
+    getRequests(request).forEach(foundRequest => {
+      const {sink} = foundRequest;
+      sink.next(ensureValidPayload(payload));
     });
   };
 
   const complete = request => {
-    getRequest(request).sink.complete();
+    getRequests(request).forEach(foundRequest => foundRequest.sink.complete());
   };
 
   const resolve = (request, payload) => {
-    const {sink, variables} = getRequest(request);
-    sink.next({
-      kind: 'data',
-      operation: request.operation,
-      variables: variables,
-      response: ensureValidPayload(payload),
+    getRequests(request).forEach(foundRequest => {
+      const {sink} = foundRequest;
+      sink.next(ensureValidPayload(payload));
+      sink.complete();
     });
-    sink.complete();
   };
 
   // Mock instance

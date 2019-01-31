@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -39,6 +39,12 @@ const users = [
     pinned: false,
   },
   {
+    caption: 'Flexport',
+    image: '/relay/img/logos/flexport.png',
+    infoLink: 'https://flexport.com',
+    pinned: false,
+  },
+  {
     caption: '1stdibs',
     image: '/relay/img/logos/1stdibs.png',
     infoLink: 'https://www.1stdibs.com/',
@@ -54,6 +60,24 @@ const users = [
     caption: 'Entria',
     image: '/relay/img/logos/entria.png',
     infoLink: 'https://github.com/entria',
+    pinned: false,
+  },
+  {
+    caption: 'itDAGENE',
+    image: '/relay/img/logos/itdagene.png',
+    infoLink: 'https://github.com/itdagene-ntnu/itdagene-webapp',
+    pinned: false,
+  },
+  {
+    caption: 'Kiwi.com',
+    image: '/relay/img/logos/kiwicom.png',
+    infoLink: 'https://www.kiwi.com/',
+    pinned: false,
+  },
+  {
+    caption: 'Jusbrasil',
+    image: '/relay/img/logos/jusbrasil.png',
+    infoLink: 'https://github.com/jusbrasil',
     pinned: false,
   },
 ];

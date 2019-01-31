@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,13 +11,13 @@
 'use strict';
 
 const React = require('React');
+const ReactRelayContext = require('../ReactRelayContext');
 const ReactRelayFragmentContainer = require('../ReactRelayFragmentContainer');
-const ReactRelayPropTypes = require('../ReactRelayPropTypes');
 const ReactTestRenderer = require('ReactTestRenderer');
 const RelayModernTestUtils = require('RelayModernTestUtils');
 
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
-const {createOperationSelector, ROOT_ID} = require('relay-runtime');
+const {createOperationDescriptor, ROOT_ID} = require('relay-runtime');
 
 describe('ReactRelayFragmentContainer', () => {
   let TestComponent;
@@ -33,50 +33,51 @@ describe('ReactRelayFragmentContainer', () => {
   class ContextSetter extends React.Component {
     constructor(props) {
       super();
-      // eslint-disable-next-line no-shadow
-      const {environment, variables} = props;
-      this.relay = {environment, variables};
+      this.__relayContext = {
+        environment: props.environment,
+        variables: props.variables,
+      };
       this.state = {props: null};
     }
     UNSAFE_componentWillReceiveProps(nextProps) {
       // eslint-disable-next-line no-shadow
       const {environment, variables} = nextProps;
       if (
-        environment !== this.relay.environment ||
-        variables !== this.relay.variables
+        environment !== this.__relayContext.environment ||
+        variables !== this.__relayContext.variables
       ) {
-        this.relay = {environment, variables};
+        this.__relayContext = {environment, variables};
       }
-    }
-    getChildContext() {
-      return {relay: this.relay};
     }
     setProps(props) {
       this.setState({props});
     }
     setContext(env, vars) {
-      this.relay = {environment: env, variables: vars};
-      this.setState({context: {environment: env, variables: vars}});
+      this.__relayContext = {
+        environment: env,
+        variables: vars,
+      };
+      this.setProps({});
     }
     render() {
-      const child = React.Children.only(this.props.children);
+      let child = React.Children.only(this.props.children);
       if (this.state.props) {
-        return React.cloneElement(child, this.state.props);
+        child = React.cloneElement(child, this.state.props);
       }
-      return child;
+      return (
+        <ReactRelayContext.Provider value={this.__relayContext}>
+          {child}
+        </ReactRelayContext.Provider>
+      );
     }
   }
-  ContextSetter.childContextTypes = {
-    relay: ReactRelayPropTypes.Relay,
-  };
 
   beforeEach(() => {
     jest.resetModules();
     expect.extend(RelayModernTestUtils.matchers);
 
     environment = createMockEnvironment();
-    ({UserFragment, UserQuery} = environment.mock.compile(
-      `
+    ({UserFragment, UserQuery} = environment.mock.compile(`
       query UserQuery($id: ID!) {
         node(id: $id) {
           ...UserFragment
@@ -89,8 +90,7 @@ describe('ReactRelayFragmentContainer', () => {
         id
         name @include(if: $cond)
       }
-    `,
-    ));
+    `));
 
     render = jest.fn(() => <div />);
     spec = {
@@ -105,7 +105,7 @@ describe('ReactRelayFragmentContainer', () => {
     );
 
     // Pre-populate the store with data
-    environment.commitPayload(createOperationSelector(UserQuery, {id: '4'}), {
+    environment.commitPayload(createOperationDescriptor(UserQuery, {id: '4'}), {
       node: {
         id: '4',
         __typename: 'User',
@@ -113,7 +113,7 @@ describe('ReactRelayFragmentContainer', () => {
       },
     });
     environment.commitPayload(
-      createOperationSelector(UserQuery, {id: '842472'}),
+      createOperationDescriptor(UserQuery, {id: '842472'}),
       {
         node: {
           id: '842472',
@@ -161,7 +161,7 @@ describe('ReactRelayFragmentContainer', () => {
   it('passes non-fragment props to the component', () => {
     ReactTestRenderer.create(
       <ContextSetter environment={environment} variables={variables}>
-        <TestContainer bar={1} foo={'foo'} />
+        <TestContainer bar={1} foo="foo" />
       </ContextSetter>,
     );
     expect(render.mock.calls.length).toBe(1);
@@ -170,7 +170,6 @@ describe('ReactRelayFragmentContainer', () => {
       foo: 'foo',
       relay: {
         environment: environment,
-        isLoading: false,
       },
       user: null,
     });
@@ -189,7 +188,6 @@ describe('ReactRelayFragmentContainer', () => {
     expect(render.mock.calls[0][0]).toEqual({
       relay: {
         environment: environment,
-        isLoading: false,
       },
       user: null,
     });
@@ -214,7 +212,6 @@ describe('ReactRelayFragmentContainer', () => {
     expect(render.mock.calls[0][0]).toEqual({
       relay: {
         environment: environment,
-        isLoading: false,
       },
       user: {
         id: '4',
@@ -230,8 +227,10 @@ describe('ReactRelayFragmentContainer', () => {
         name: 'Zuck',
       },
       node: UserFragment,
-      seenRecords: jasmine.any(Object),
+      seenRecords: expect.any(Object),
       variables: {cond: true},
+      isMissingData: false,
+      owner: null,
     });
   });
 
@@ -271,7 +270,6 @@ describe('ReactRelayFragmentContainer', () => {
     expect(render.mock.calls[0][0]).toEqual({
       relay: {
         environment: environment,
-        isLoading: false,
       },
       user: {
         id: '4',
@@ -309,7 +307,6 @@ describe('ReactRelayFragmentContainer', () => {
     expect(render.mock.calls[0][0]).toEqual({
       relay: {
         environment: environment,
-        isLoading: false,
       },
       user: {
         id: '842472',
@@ -325,8 +322,10 @@ describe('ReactRelayFragmentContainer', () => {
         name: 'Joe',
       },
       node: UserFragment,
-      seenRecords: jasmine.any(Object),
+      seenRecords: expect.any(Object),
       variables: {cond: true},
+      isMissingData: false,
+      owner: null,
     });
   });
 
@@ -345,18 +344,13 @@ describe('ReactRelayFragmentContainer', () => {
     environment.lookup.mockClear();
     environment.subscribe.mockClear();
 
-    // Update the variables in context.
-    // Context object should be mutated (for compat with gDSFP).
-    const context = instance.getInstance().getChildContext();
-    context.relay.variables = {id: '6'};
-    instance.getInstance().setProps({});
+    instance.getInstance().setContext(environment, {id: '6'});
 
     // New data & variables are passed to component
     expect(render.mock.calls.length).toBe(1);
     expect(render.mock.calls[0][0]).toEqual({
       relay: {
         environment: environment,
-        isLoading: false,
       },
       user: {
         id: '4',
@@ -372,8 +366,10 @@ describe('ReactRelayFragmentContainer', () => {
         name: 'Zuck',
       },
       node: UserFragment,
-      seenRecords: jasmine.any(Object),
+      seenRecords: expect.any(Object),
       variables: {cond: true},
+      isMissingData: false,
+      owner: null,
     });
   });
 

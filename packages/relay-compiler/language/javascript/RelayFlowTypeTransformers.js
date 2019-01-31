@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,7 +12,10 @@
 
 const t = require('@babel/types');
 
-const {readOnlyArrayOfType} = require('./RelayFlowBabelFactories');
+const {
+  exactObjectTypeAnnotation,
+  readOnlyArrayOfType,
+} = require('./RelayFlowBabelFactories');
 const {
   GraphQLEnumType,
   GraphQLInputObjectType,
@@ -121,18 +124,20 @@ function transformNonNullableInputType(type: GraphQLInputType, state: State) {
     const fields = type.getFields();
     const props = Object.keys(fields)
       .map(key => fields[key])
-      .filter(field => state.inputFieldWhiteList.indexOf(field.name) < 0)
       .map(field => {
         const property = t.objectTypeProperty(
           t.identifier(field.name),
           transformInputType(field.type, state),
         );
-        if (!(field.type instanceof GraphQLNonNull)) {
+        if (
+          state.optionalInputFields.indexOf(field.name) >= 0 ||
+          !(field.type instanceof GraphQLNonNull)
+        ) {
           property.optional = true;
         }
         return property;
       });
-    state.generatedInputObjectTypes[typeIdentifier] = t.objectTypeAnnotation(
+    state.generatedInputObjectTypes[typeIdentifier] = exactObjectTypeAnnotation(
       props,
     );
     return t.genericTypeAnnotation(t.identifier(typeIdentifier));

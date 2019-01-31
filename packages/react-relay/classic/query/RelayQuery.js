@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -499,7 +499,7 @@ class RelayQueryRoot extends RelayQueryNode {
     return batchCall;
   }
 
-  getCallsWithValues(): Array<Call> {
+  getCallsWithValues(): $ReadOnlyArray<Call> {
     let calls = this.__calls__;
     if (!calls) {
       const concreteCalls = (this.__concreteNode__: ConcreteQuery).calls;
@@ -1131,7 +1131,7 @@ class RelayQueryField extends RelayQueryNode {
   }: {
     alias?: ?string,
     directives?: ?Array<Directive>,
-    calls?: ?Array<Call>,
+    calls?: ?$ReadOnlyArray<Call>,
     children?: ?NextChildren,
     fieldName: string,
     metadata?: ?ConcreteFieldMetadata,
@@ -1342,7 +1342,7 @@ class RelayQueryField extends RelayQueryNode {
     return (this.__concreteNode__: ConcreteField).metadata.inferredPrimaryKey;
   }
 
-  getCallsWithValues(): Array<Call> {
+  getCallsWithValues(): $ReadOnlyArray<Call> {
     let calls = this.__calls__;
     if (!calls) {
       const concreteCalls = (this.__concreteNode__: ConcreteField).calls;
@@ -1395,7 +1395,7 @@ class RelayQueryField extends RelayQueryNode {
 
   cloneFieldWithCalls(
     children: NextChildren,
-    calls: Array<Call>,
+    calls: $ReadOnlyArray<Call>,
   ): ?RelayQueryField {
     if (!this.canHaveSubselections()) {
       // Compact new children *after* this check, for consistency.
@@ -1612,7 +1612,7 @@ function cloneChildren(
 /**
  * Creates an opaque serialization of calls.
  */
-function serializeCalls(calls: Array<Call>): string {
+function serializeCalls(calls: $ReadOnlyArray<Call>): string {
   if (calls.length) {
     const callMap = {};
     calls.forEach(call => {
@@ -1630,8 +1630,8 @@ function serializeCalls(calls: Array<Call>): string {
  * the Babel plugin.
  */
 function areCallValuesEqual(
-  thisCalls: Array<Call>,
-  thatCalls: Array<Call>,
+  thisCalls: $ReadOnlyArray<Call>,
+  thatCalls: $ReadOnlyArray<Call>,
 ): boolean {
   if (thisCalls.length !== thatCalls.length) {
     return false;

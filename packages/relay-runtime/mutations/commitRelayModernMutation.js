@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -14,6 +14,7 @@ const RelayDeclarativeMutationConfig = require('./RelayDeclarativeMutationConfig
 
 const invariant = require('invariant');
 const isRelayModernEnvironment = require('../store/isRelayModernEnvironment');
+const validateMutation = require('./validateMutation');
 const warning = require('warning');
 
 import type {PayloadError, UploadableMap} from '../network/RelayNetworkTypes';
@@ -51,14 +52,19 @@ function commitRelayModernMutation<T>(
       'both environments.\n' +
       'See: http://facebook.github.io/relay/docs/relay-compat.html',
   );
-  const {createOperationSelector, getRequest} = environment.unstable_internal;
+  const {createOperationDescriptor, getRequest} = environment.unstable_internal;
   const mutation = getRequest(config.mutation);
-  if (mutation.operationKind !== 'mutation') {
+  if (mutation.params.operationKind !== 'mutation') {
     throw new Error('commitRelayModernMutation: Expected mutation operation');
+  }
+  if (mutation.kind !== 'Request') {
+    throw new Error(
+      'commitRelayModernMutation: Expected mutation to be of type request',
+    );
   }
   let {optimisticResponse, optimisticUpdater, updater} = config;
   const {configs, onError, variables, uploadables} = config;
-  const operation = createOperationSelector(mutation, variables);
+  const operation = createOperationDescriptor(mutation, variables);
   // TODO: remove this check after we fix flow.
   if (typeof optimisticResponse === 'function') {
     optimisticResponse = optimisticResponse();
@@ -68,19 +74,10 @@ function commitRelayModernMutation<T>(
         'received a function.',
     );
   }
-  if (
-    optimisticResponse &&
-    mutation.fragment.selections &&
-    mutation.fragment.selections.length === 1 &&
-    mutation.fragment.selections[0].kind === 'LinkedField'
-  ) {
-    const mutationRoot = mutation.fragment.selections[0].name;
-    warning(
-      optimisticResponse[mutationRoot],
-      'commitRelayModernMutation: Expected `optimisticResponse` to be wrapped ' +
-        'in mutation name `%s`',
-      mutationRoot,
-    );
+  if (__DEV__) {
+    if (optimisticResponse instanceof Object) {
+      validateMutation(optimisticResponse, mutation, config.variables);
+    }
   }
   if (configs) {
     ({optimisticUpdater, updater} = RelayDeclarativeMutationConfig.convert(
@@ -90,7 +87,8 @@ function commitRelayModernMutation<T>(
       updater,
     ));
   }
-  return environment
+  const errors = [];
+  const subscription = environment
     .executeMutation({
       operation,
       optimisticResponse,
@@ -98,19 +96,22 @@ function commitRelayModernMutation<T>(
       updater,
       uploadables,
     })
-    .subscribeLegacy({
-      onNext: payload => {
-        // NOTE: commitRelayModernMutation has a non-standard use of
-        // onCompleted() by calling it on every next value. It may be called
-        // multiple times if a network request produces multiple responses.
+    .subscribe({
+      next: payload => {
+        if (payload.errors) {
+          errors.push(...payload.errors);
+        }
+      },
+      complete: () => {
         const {onCompleted} = config;
         if (onCompleted) {
           const snapshot = environment.lookup(operation.fragment);
-          onCompleted((snapshot.data: $FlowFixMe), payload.response.errors);
+          onCompleted((snapshot.data: $FlowFixMe), errors);
         }
       },
-      onError,
+      error: onError,
     });
+  return {dispose: subscription.unsubscribe};
 }
 
 module.exports = commitRelayModernMutation;

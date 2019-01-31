@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -15,8 +15,8 @@ const RelayModernTestUtils = require('RelayModernTestUtils');
 const fetchRelayModernQuery = require('../fetchRelayModernQuery');
 
 const {
-  createOperationSelector,
-} = require('../../store/RelayModernOperationSelector');
+  createOperationDescriptor,
+} = require('../../store/RelayModernOperationDescriptor');
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
 
 describe('fetchRelayModernQuery', () => {
@@ -31,8 +31,7 @@ describe('fetchRelayModernQuery', () => {
     jest.resetModules();
 
     environment = createMockEnvironment();
-    ({ActorQuery: query} = generateAndCompile(
-      `
+    ({ActorQuery: query} = generateAndCompile(`
       query ActorQuery($fetchSize: Boolean!) {
         me {
           name
@@ -41,10 +40,9 @@ describe('fetchRelayModernQuery', () => {
           }
         }
       }
-    `,
-    ));
+    `));
     variables = {fetchSize: false};
-    operation = createOperationSelector(query, variables);
+    operation = createOperationDescriptor(query, variables);
   });
 
   it('fetches the query', () => {

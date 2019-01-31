@@ -1,33 +1,25 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
 'use strict';
 
-const {Validator} = require('graphql-compiler');
+const {GLOBAL_RULES, LOCAL_RULES, validate} = require('./GraphQLValidator');
 
-import type {GraphQLField, ValidationContext} from 'graphql';
-
-const {GLOBAL_RULES, LOCAL_RULES, validate} = Validator;
+import type {FieldNode, ValidationContext} from 'graphql';
 
 function DisallowIdAsAliasValidationRule(context: ValidationContext) {
   return {
-    Field(field: GraphQLField<*, *>): void {
+    Field(field: FieldNode): void {
       if (
-        /* $FlowFixMe(>=0.68.0 site=react_native_fb,react_native_oss) This
-         * comment suppresses an error found when Flow v0.68 was deployed. To
-         * see the error delete this comment and run Flow. */
         field.alias &&
         field.alias.value === 'id' &&
-        /* $FlowFixMe(>=0.68.0 site=react_native_fb,react_native_oss) This
-         * comment suppresses an error found when Flow v0.68 was deployed. To
-         * see the error delete this comment and run Flow. */
         field.name.value !== 'id'
       ) {
         throw new Error(

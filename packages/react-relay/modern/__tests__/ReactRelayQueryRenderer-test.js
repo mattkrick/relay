@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,14 +11,18 @@
 'use strict';
 
 const React = require('React');
-const ReactRelayPropTypes = require('../ReactRelayPropTypes');
+const ReactRelayContext = require('../ReactRelayContext');
 const ReactRelayQueryRenderer = require('../ReactRelayQueryRenderer');
 const ReactTestRenderer = require('ReactTestRenderer');
 
+const readContext = require('../readContext');
+
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
 const {
+  createOperationDescriptor,
   Environment,
   Network,
+  Observable,
   RecordSource,
   Store,
   simpleClone,
@@ -77,8 +81,7 @@ describe('ReactRelayQueryRenderer', () => {
 
     environment = createMockEnvironment();
     store = environment.getStore();
-    ({TestQuery} = environment.mock.compile(
-      `
+    ({TestQuery} = environment.mock.compile(`
       query TestQuery($id: ID = "<default>") {
         node(id: $id) {
           id
@@ -89,8 +92,7 @@ describe('ReactRelayQueryRenderer', () => {
       fragment TestFragment on User {
         name
       }
-    `,
-    ));
+    `));
 
     render = jest.fn(() => <div />);
     variables = {id: '4'};
@@ -110,6 +112,338 @@ describe('ReactRelayQueryRenderer', () => {
       expect(
         environment.mock.isLoading(TestQuery, variables, cacheConfig),
       ).toBe(true);
+    });
+
+    describe('when constructor fires multiple times', () => {
+      describe('when store does not have snapshot and fetch does not return snapshot', () => {
+        it('fetches the query only once, renders loading state', () => {
+          environment.mockClear();
+          function Child(props) {
+            // NOTE the unstable_yield method will move to the static renderer.
+            // When React sync runs we need to update this.
+            ReactTestRenderer.unstable_yield(props.children);
+            return props.children;
+          }
+
+          class Example extends React.Component {
+            render() {
+              return (
+                <React.Fragment>
+                  <Child>A</Child>
+                  <ReactRelayQueryRenderer
+                    query={TestQuery}
+                    cacheConfig={cacheConfig}
+                    environment={environment}
+                    render={render}
+                    variables={variables}
+                  />
+                  <Child>B</Child>
+                  <Child>C</Child>
+                </React.Fragment>
+              );
+            }
+          }
+          const renderer = ReactTestRenderer.create(<Example />, {
+            unstable_isConcurrent: true,
+          });
+
+          // Flush some of the changes, but don't commit
+          expect(renderer.unstable_flushNumberOfYields(2)).toEqual(['A', 'B']);
+          expect(renderer.toJSON()).toEqual(null);
+          expect({
+            error: null,
+            props: null,
+            retry: null,
+          }).toBeRendered();
+          expect(environment.execute.mock.calls.length).toBe(1);
+          render.mockClear();
+
+          // Interrupt with higher priority updates
+          renderer.unstable_flushSync(() => {
+            renderer.update(<Example />);
+          });
+          expect(environment.execute.mock.calls.length).toBe(1);
+          expect({
+            error: null,
+            props: null,
+            retry: null,
+          }).toBeRendered();
+        });
+      });
+      describe('when store has a snapshot', () => {
+        it('fetches the query only once, renders snapshot from store', () => {
+          environment.mockClear();
+          environment.applyUpdate({
+            storeUpdater: _store => {
+              let root = _store.get(ROOT_ID);
+              if (!root) {
+                root = _store.create(ROOT_ID, ROOT_TYPE);
+              }
+              const user = _store.create('4', 'User');
+              user.setValue('4', 'id');
+              user.setValue('Zuck', 'name');
+              root.setLinkedRecord(user, 'node', {id: '4'});
+            },
+          });
+
+          function Child(props) {
+            // NOTE the unstable_yield method will move to the static renderer.
+            // When React sync runs we need to update this.
+            ReactTestRenderer.unstable_yield(props.children);
+            return props.children;
+          }
+
+          class Example extends React.Component {
+            render() {
+              return (
+                <React.Fragment>
+                  <Child>A</Child>
+                  <ReactRelayQueryRenderer
+                    query={TestQuery}
+                    dataFrom="STORE_THEN_NETWORK"
+                    environment={environment}
+                    render={render}
+                    variables={variables}
+                  />
+                  <Child>B</Child>
+                  <Child>C</Child>
+                </React.Fragment>
+              );
+            }
+          }
+          const renderer = ReactTestRenderer.create(<Example />, {
+            unstable_isConcurrent: true,
+          });
+          const owner = createOperationDescriptor(TestQuery, variables);
+
+          // Flush some of the changes, but don't commit
+          expect(renderer.unstable_flushNumberOfYields(2)).toEqual(['A', 'B']);
+          expect(renderer.toJSON()).toEqual(null);
+          expect({
+            error: null,
+            props: {
+              node: {
+                id: '4',
+                __fragments: {
+                  TestFragment: {},
+                },
+                __fragmentOwner: owner,
+                __id: '4',
+              },
+            },
+            retry: expect.any(Function),
+          }).toBeRendered();
+          expect(environment.execute.mock.calls.length).toBe(1);
+          render.mockClear();
+
+          // Interrupt with higher priority updates
+          renderer.unstable_flushSync(() => {
+            renderer.update(<Example />);
+          });
+          expect(environment.execute.mock.calls.length).toBe(1);
+          expect({
+            error: null,
+            props: {
+              node: {
+                id: '4',
+                __fragments: {
+                  TestFragment: {},
+                },
+                __fragmentOwner: owner,
+                __id: '4',
+              },
+            },
+            retry: expect.any(Function),
+          }).toBeRendered();
+        });
+      });
+      describe('when fetch returns a response synchronously first time', () => {
+        it('fetches the query once, always renders snapshot returned by fetch', () => {
+          const fetch = jest.fn().mockReturnValueOnce(response);
+          store = new Store(new RecordSource());
+          environment = new Environment({
+            network: Network.create(fetch),
+            store,
+          });
+
+          function Child(props) {
+            // NOTE the unstable_yield method will move to the static renderer.
+            // When React sync runs we need to update this.
+            ReactTestRenderer.unstable_yield(props.children);
+            return props.children;
+          }
+
+          class Example extends React.Component {
+            render() {
+              return (
+                <React.Fragment>
+                  <Child>A</Child>
+                  <ReactRelayQueryRenderer
+                    query={TestQuery}
+                    dataFrom="STORE_THEN_NETWORK"
+                    environment={environment}
+                    render={render}
+                    variables={variables}
+                  />
+                  <Child>B</Child>
+                  <Child>C</Child>
+                </React.Fragment>
+              );
+            }
+          }
+          const renderer = ReactTestRenderer.create(<Example />, {
+            unstable_isConcurrent: true,
+          });
+          const owner = createOperationDescriptor(TestQuery, variables);
+
+          // Flush some of the changes, but don't commit
+          expect(renderer.unstable_flushNumberOfYields(2)).toEqual(['A', 'B']);
+          expect(renderer.toJSON()).toEqual(null);
+          expect({
+            error: null,
+            props: {
+              node: {
+                id: '4',
+                __fragments: {
+                  TestFragment: {},
+                },
+                __fragmentOwner: owner,
+                __id: '4',
+              },
+            },
+            retry: expect.any(Function),
+          }).toBeRendered();
+          expect(fetch.mock.calls.length).toBe(1);
+          render.mockClear();
+
+          // Interrupt with higher priority updates
+          renderer.unstable_flushSync(() => {
+            renderer.update(<Example />);
+          });
+          expect(fetch.mock.calls.length).toBe(1);
+          expect({
+            error: null,
+            props: {
+              node: {
+                id: '4',
+                __fragments: {
+                  TestFragment: {},
+                },
+                __fragmentOwner: owner,
+                __id: '4',
+              },
+            },
+            retry: expect.any(Function),
+          }).toBeRendered();
+        });
+      });
+    });
+
+    describe('when variables change before first result has completed', () => {
+      it('correctly renders data for new variables', () => {
+        environment = createMockEnvironment();
+        let pendingRequests = [];
+        jest.spyOn(environment, 'execute').mockImplementation(request => {
+          const nextRequest = {request};
+          pendingRequests = pendingRequests.concat([nextRequest]);
+          return Observable.create(sink => {
+            nextRequest.resolve = resp => {
+              environment.commitPayload(request.operation, resp.data);
+              sink.next(resp);
+              sink.complete();
+            };
+          });
+        });
+        const renderer = ReactTestRenderer.create(
+          <PropsSetter>
+            <ReactRelayQueryRenderer
+              environment={environment}
+              query={TestQuery}
+              render={render}
+              variables={variables}
+              cacheConfig={{force: true}}
+            />
+          </PropsSetter>,
+        );
+        render.mockClear();
+        expect(environment.execute).toBeCalledTimes(1);
+        expect(pendingRequests.length).toEqual(1);
+
+        const firstRequest = pendingRequests[0];
+        const firstOwner = firstRequest.request.operation;
+        firstRequest.resolve(response);
+        expect({
+          error: null,
+          props: {
+            node: {
+              id: '4',
+              __fragments: {
+                TestFragment: {},
+              },
+              __fragmentOwner: firstOwner,
+              __id: '4',
+            },
+          },
+          retry: expect.any(Function),
+        }).toBeRendered();
+        render.mockClear();
+
+        renderer.getInstance().setProps({
+          variables: {id: '5'},
+        });
+        expect(environment.execute).toBeCalledTimes(2);
+        expect(pendingRequests.length).toEqual(2);
+
+        renderer.getInstance().setProps({
+          variables: {id: '6'},
+        });
+        expect(environment.execute).toBeCalledTimes(3);
+        expect(pendingRequests.length).toEqual(3);
+
+        const secondRequest = pendingRequests[1];
+        const secondResponse = {
+          data: {
+            node: {
+              __typename: 'User',
+              id: '5',
+              name: 'Other',
+            },
+          },
+        };
+        const thirdRequest = pendingRequests[2];
+        const thirdOwner = thirdRequest.request.operation;
+        const thirdResponse = {
+          data: {
+            node: {
+              __typename: 'User',
+              id: '6',
+              name: 'Third',
+            },
+          },
+        };
+
+        // Resolve the latest request first, and the earlier request last
+        // The query renderer should render the data from the latest
+        // request
+        thirdRequest.resolve(thirdResponse);
+        secondRequest.resolve(secondResponse);
+        expect(render.mock.calls.length).toEqual(3);
+        const lastRender = render.mock.calls[2][0];
+        expect(lastRender).toEqual({
+          error: null,
+          props: {
+            node: {
+              id: '6',
+              __fragments: {
+                TestFragment: {},
+              },
+              __fragmentOwner: thirdOwner,
+              __id: '6',
+            },
+          },
+          retry: expect.any(Function),
+        });
+      });
     });
 
     it('fetches the query with default variables', () => {
@@ -168,6 +502,7 @@ describe('ReactRelayQueryRenderer', () => {
           variables={variables}
         />,
       );
+      const owner = createOperationDescriptor(TestQuery, variables);
       expect({
         error: null,
         props: {
@@ -176,10 +511,11 @@ describe('ReactRelayQueryRenderer', () => {
             __fragments: {
               TestFragment: {},
             },
+            __fragmentOwner: owner,
             __id: '4',
           },
         },
-        retry: jasmine.any(Function),
+        retry: expect.any(Function),
       }).toBeRendered();
     });
 
@@ -199,6 +535,7 @@ describe('ReactRelayQueryRenderer', () => {
           variables={variables}
         />,
       );
+      const owner = createOperationDescriptor(TestQuery, variables);
       expect({
         error: null,
         props: {
@@ -207,10 +544,11 @@ describe('ReactRelayQueryRenderer', () => {
             __fragments: {
               TestFragment: {},
             },
+            __fragmentOwner: owner,
             __id: '4',
           },
         },
-        retry: jasmine.any(Function),
+        retry: expect.any(Function),
       }).toBeRendered();
     });
 
@@ -234,30 +572,20 @@ describe('ReactRelayQueryRenderer', () => {
       expect({
         error: error,
         props: null,
-        retry: jasmine.any(Function),
+        retry: expect.any(Function),
       }).toBeRendered();
     });
   });
 
   describe('context', () => {
-    let ContextGetter;
     let relayContext;
 
     beforeEach(() => {
-      ContextGetter = class extends React.Component {
-        componentDidMount() {
-          relayContext = this.context.relay;
-        }
-        componentDidUpdate() {
-          relayContext = this.context.relay;
-        }
-        render() {
-          return <div />;
-        }
-      };
-      ContextGetter.contextTypes = {
-        relay: ReactRelayPropTypes.Relay,
-      };
+      function ContextGetter() {
+        relayContext = readContext(ReactRelayContext);
+        return null;
+      }
+
       render = jest.fn(() => <ContextGetter />);
     });
 
@@ -319,8 +647,7 @@ describe('ReactRelayQueryRenderer', () => {
         variables,
       });
 
-      // Context object should be mutated (for compat with gDSFP).
-      expect(relayContext).toBe(previousContext);
+      expect(relayContext).not.toBe(previousContext);
       expect(relayContext.environment).toBe(environment);
       expect(relayContext.variables).toEqual(variables);
     });
@@ -347,8 +674,7 @@ describe('ReactRelayQueryRenderer', () => {
         variables,
       });
 
-      // Context object should be mutated (for compat with gDSFP).
-      expect(relayContext).toBe(previousContext);
+      expect(relayContext).not.toBe(previousContext);
       expect(relayContext.environment).toBe(environment);
       expect(relayContext.variables).toEqual(variables);
     });
@@ -375,8 +701,7 @@ describe('ReactRelayQueryRenderer', () => {
         variables,
       });
 
-      // Context object should be mutated (for compat with gDSFP).
-      expect(relayContext).toBe(previousContext);
+      expect(relayContext).not.toBe(previousContext);
       expect(relayContext.environment).toBe(environment);
       expect(relayContext.variables).toEqual({
         id: '<default>',
@@ -648,11 +973,11 @@ describe('ReactRelayQueryRenderer', () => {
       );
     });
 
-    it('does not retain until the first response', () => {
+    it('retains immediately', () => {
       expect.assertions(1);
       render.mockClear();
       environment.mock.reject(TestQuery, new Error('fail'));
-      expect(environment.retain).not.toBeCalled();
+      expect(environment.retain.mock.calls.length).toBe(1);
     });
 
     it('renders the error and retry', () => {
@@ -663,7 +988,7 @@ describe('ReactRelayQueryRenderer', () => {
       expect({
         error,
         props: null,
-        retry: jasmine.any(Function),
+        retry: expect.any(Function),
       }).toBeRendered();
     });
 
@@ -685,6 +1010,7 @@ describe('ReactRelayQueryRenderer', () => {
 
       render.mockClear();
       environment.mock.resolve(TestQuery, response);
+      const owner = createOperationDescriptor(TestQuery, variables);
       expect({
         error: null,
         props: {
@@ -693,11 +1019,89 @@ describe('ReactRelayQueryRenderer', () => {
             __fragments: {
               TestFragment: {},
             },
+            __fragmentOwner: owner,
             __id: '4',
           },
         },
-        retry: jasmine.any(Function),
+        retry: expect.any(Function),
       }).toBeRendered();
+    });
+  });
+
+  describe('with two identical query fetchers', () => {
+    // Regression test for T32896427
+    describe('when the fetch succeeds', () => {
+      it('renders the query results', () => {
+        const mockA = jest.fn().mockReturnValue('A');
+        const mockB = jest.fn().mockReturnValue('B');
+        class Example extends React.Component {
+          render() {
+            return (
+              <React.Fragment>
+                <ReactRelayQueryRenderer
+                  query={TestQuery}
+                  cacheConfig={cacheConfig}
+                  environment={environment}
+                  render={mockA}
+                  variables={variables}
+                />
+                <ReactRelayQueryRenderer
+                  query={TestQuery}
+                  cacheConfig={cacheConfig}
+                  environment={environment}
+                  render={mockB}
+                  variables={variables}
+                />
+              </React.Fragment>
+            );
+          }
+        }
+        const renderer = ReactTestRenderer.create(<Example />);
+        expect.assertions(3);
+        mockA.mockClear();
+        mockB.mockClear();
+        environment.mock.resolve(TestQuery, response);
+        const mockACalls = mockA.mock.calls;
+        const mockBCalls = mockB.mock.calls;
+        const owner = createOperationDescriptor(TestQuery, variables);
+        expect(mockACalls).toEqual([
+          [
+            {
+              error: null,
+              props: {
+                node: {
+                  id: '4',
+                  __fragments: {
+                    TestFragment: {},
+                  },
+                  __fragmentOwner: owner,
+                  __id: '4',
+                },
+              },
+              retry: expect.any(Function),
+            },
+          ],
+        ]);
+        expect(mockBCalls).toEqual([
+          [
+            {
+              error: null,
+              props: {
+                node: {
+                  id: '4',
+                  __fragments: {
+                    TestFragment: {},
+                  },
+                  __fragmentOwner: owner,
+                  __id: '4',
+                },
+              },
+              retry: expect.any(Function),
+            },
+          ],
+        ]);
+        expect(renderer.toJSON()).toEqual(['A', 'B']);
+      });
     });
   });
 
@@ -731,6 +1135,7 @@ describe('ReactRelayQueryRenderer', () => {
       expect.assertions(3);
       render.mockClear();
       environment.mock.resolve(TestQuery, response);
+      const owner = createOperationDescriptor(TestQuery, variables);
       expect({
         error: null,
         props: {
@@ -739,10 +1144,11 @@ describe('ReactRelayQueryRenderer', () => {
             __fragments: {
               TestFragment: {},
             },
+            __fragmentOwner: owner,
             __id: '4',
           },
         },
-        retry: jasmine.any(Function),
+        retry: expect.any(Function),
       }).toBeRendered();
     });
 
@@ -759,15 +1165,13 @@ describe('ReactRelayQueryRenderer', () => {
       );
     });
   });
-
   describe('when props change during a fetch', () => {
     let NextQuery;
     let renderer;
     let nextProps;
 
     beforeEach(() => {
-      ({NextQuery} = environment.mock.compile(
-        `
+      ({NextQuery} = environment.mock.compile(`
         query NextQuery($id: ID!) {
           node(id: $id) {
             ... on User {
@@ -775,8 +1179,7 @@ describe('ReactRelayQueryRenderer', () => {
             }
           }
         }
-      `,
-      ));
+      `));
 
       variables = {id: '4'};
       renderer = ReactTestRenderer.create(
@@ -870,8 +1273,7 @@ describe('ReactRelayQueryRenderer', () => {
     let nextProps;
 
     beforeEach(() => {
-      ({NextQuery} = environment.mock.compile(
-        `
+      ({NextQuery} = environment.mock.compile(`
         query NextQuery($id: ID!) {
           node(id: $id) {
             ... on User {
@@ -879,8 +1281,7 @@ describe('ReactRelayQueryRenderer', () => {
             }
           }
         }
-      `,
-      ));
+      `));
 
       variables = {id: '4'};
       renderer = ReactTestRenderer.create(
@@ -955,8 +1356,7 @@ describe('ReactRelayQueryRenderer', () => {
     let nextProps;
 
     beforeEach(() => {
-      ({NextQuery} = environment.mock.compile(
-        `
+      ({NextQuery} = environment.mock.compile(`
         query NextQuery($id: ID!) {
           node(id: $id) {
             ... on User {
@@ -964,8 +1364,7 @@ describe('ReactRelayQueryRenderer', () => {
             }
           }
         }
-      `,
-      ));
+      `));
 
       renderer = ReactTestRenderer.create(
         <PropsSetter>
@@ -1060,9 +1459,12 @@ describe('ReactRelayQueryRenderer', () => {
           variables={variables}
         />,
       );
-      expect(environment.retain).not.toBeCalled();
+      expect(environment.retain).toBeCalled();
+      expect(environment.retain.mock.calls.length).toBe(1);
+      const dispose = environment.retain.mock.dispose;
+      expect(dispose).not.toBeCalled();
       renderer.unmount();
-      expect(environment.retain).not.toBeCalled();
+      expect(dispose).toBeCalled();
     });
 
     it('releases its reference if unmounted after fetch completes', () => {
@@ -1075,6 +1477,8 @@ describe('ReactRelayQueryRenderer', () => {
         />,
       );
       environment.mock.resolve(TestQuery, response);
+      expect(environment.retain).toBeCalled();
+      expect(environment.retain.mock.calls.length).toBe(1);
       const dispose = environment.retain.mock.dispose;
       expect(dispose).not.toBeCalled();
       renderer.unmount();
@@ -1103,8 +1507,7 @@ describe('ReactRelayQueryRenderer', () => {
     let nextProps;
 
     beforeEach(() => {
-      ({NextQuery} = environment.mock.compile(
-        `
+      ({NextQuery} = environment.mock.compile(`
         query NextQuery($id: ID!) {
           node(id: $id) {
             ... on User {
@@ -1112,8 +1515,7 @@ describe('ReactRelayQueryRenderer', () => {
             }
           }
         }
-      `,
-      ));
+      `));
 
       renderer = ReactTestRenderer.create(
         <PropsSetter>

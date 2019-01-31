@@ -33,6 +33,7 @@ module.name_mapper='^ReactDOM$' -> 'react-dom'
 
 esproposal.class_static_fields=enable
 esproposal.class_instance_fields=enable
+esproposal.optional_chaining=enable
 
 munge_underscores=true
 
@@ -47,4 +48,4 @@ suppress_comment=\\(.\\|\n\\)*\\$FlowFixedInNextDeploy
 suppress_comment=\\(.\\|\n\\)*\\$FlowExpectedError
 
 [version]
-^0.79.1
+^0.91.0

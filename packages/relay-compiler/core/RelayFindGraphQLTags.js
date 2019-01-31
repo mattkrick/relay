@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,11 +17,11 @@ const graphql = require('graphql');
 const path = require('path');
 const util = require('util');
 
+import type {File} from '../codegen/CodegenTypes';
 import type {
   GraphQLTag,
   GraphQLTagFinder,
 } from '../language/RelayLanguagePluginInterface';
-import type {File} from 'graphql-compiler';
 
 export type GraphQLTagFinderOptions = {|
   validateNames: boolean,

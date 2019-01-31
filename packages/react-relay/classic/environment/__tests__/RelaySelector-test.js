@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -29,7 +29,7 @@ const {
   getSelectorsFromObject,
   getVariablesFromObject,
 } = require('../RelaySelector');
-const {createOperationSelector} = require('../RelayOperationSelector');
+const {createOperationDescriptor} = require('../RelayOperationDescriptor');
 
 describe('RelaySelector', () => {
   let UserFragment;
@@ -96,7 +96,7 @@ describe('RelaySelector', () => {
 
     const nodeAlias = generateRQLFieldAlias('node.id(4)');
     environment.commitPayload(
-      createOperationSelector(UserQuery, {id: '4', size: null, cond: false}),
+      createOperationDescriptor(UserQuery, {id: '4', size: null, cond: false}),
       {
         [nodeAlias]: {
           id: '4',

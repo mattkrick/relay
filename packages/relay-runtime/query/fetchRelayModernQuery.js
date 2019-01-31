@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,8 +9,6 @@
  */
 
 'use strict';
-
-const RelayConcreteNode = require('../util/RelayConcreteNode');
 
 const invariant = require('invariant');
 
@@ -34,17 +32,12 @@ function fetchRelayModernQuery<T: OperationType>(
     'fetchRelayModernQuery: Expected a valid Relay environment, got `%s`.',
     environment,
   );
-  const {createOperationSelector, getRequest} = environment.unstable_internal;
+  const {createOperationDescriptor, getRequest} = environment.unstable_internal;
   const query = getRequest(taggedNode);
-  if (query.kind === RelayConcreteNode.BATCH_REQUEST) {
-    throw new Error(
-      'fetchRelayModernQuery: Batch request not supported in this API.',
-    );
-  }
-  if (query.operationKind !== 'query') {
+  if (query.params.operationKind !== 'query') {
     throw new Error('fetchRelayModernQuery: Expected query operation');
   }
-  const operation = createOperationSelector(query, variables);
+  const operation = createOperationDescriptor(query, variables);
 
   return environment
     .execute({operation, cacheConfig})

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,38 +17,34 @@ const warning = require('warning');
 
 const {Network, isRelayModernEnvironment} = require('relay-runtime');
 
-import type {ConcreteOperationDefinition} from '../classic/query/ConcreteQuery';
 import type {
   CacheConfig,
+  ConcreteRequest,
   GraphQLResponse,
   IEnvironment,
-  OperationSelector,
   PayloadError,
-  RequestNode,
+  RequestParameters,
   Variables,
 } from 'relay-runtime';
 
-type DataWriteConfig = {
-  query: RequestNode,
+export type DataWriteConfig = {
+  query: ConcreteRequest,
   variables: Variables,
   payload: GraphQLResponse,
 };
 
-type NetworkWriteConfig = {
-  query: RequestNode,
+export type NetworkWriteConfig = {
+  query: ConcreteRequest,
   variables?: Variables,
   payload: GraphQLResponse | (Variables => GraphQLResponse),
 };
 
-type RequestType = RequestNode | ConcreteOperationDefinition;
-
 type PendingFetch = {
-  request: RequestType,
+  request: RequestParameters,
   variables?: Variables,
   cacheConfig: ?CacheConfig,
   ident: string,
   deferred: {resolve: Function, reject: Function},
-  operationSelector: OperationSelector,
 };
 
 /**
@@ -104,7 +100,7 @@ class ReactRelayTestMocker {
    * @returns a string which can later be used to uniquely identify this query
    * in the list of pending queries
    */
-  static getIdentifier(request: RequestType): string {
+  static getIdentifier(request: RequestParameters): string {
     return request.name;
   }
 
@@ -144,7 +140,6 @@ class ReactRelayTestMocker {
 
       const strippedVars = ReactRelayTestMocker.stripUnused(variables);
       const ident = ReactRelayTestMocker.getIdentifier(request);
-      const {createOperationSelector} = env.unstable_internal;
 
       // there's a default value for this query, use it
       if (this._defaults[ident]) {
@@ -152,14 +147,12 @@ class ReactRelayTestMocker {
         return typeof payload === 'function' ? payload(strippedVars) : payload;
       }
 
-      const operationSelector = createOperationSelector(request, variables);
       pendingFetches.push({
         ident,
         cacheConfig,
         deferred: {resolve, reject},
         request,
         variables,
-        operationSelector,
       });
       return promise;
     };
@@ -210,8 +203,7 @@ class ReactRelayTestMocker {
    */
   setDefault(toSet: NetworkWriteConfig): void {
     const {query, payload} = toSet;
-    const request = query;
-    const ident = ReactRelayTestMocker.getIdentifier(request);
+    const ident = ReactRelayTestMocker.getIdentifier(query.params);
 
     this._defaults[ident] = payload;
   }
@@ -221,8 +213,7 @@ class ReactRelayTestMocker {
    */
   unsetDefault(toUnset: NetworkWriteConfig): void {
     const {query} = toUnset;
-    const request = query;
-    const ident = ReactRelayTestMocker.getIdentifier(request);
+    const ident = ReactRelayTestMocker.getIdentifier(query.params);
 
     delete this._defaults[ident];
   }
@@ -237,9 +228,9 @@ class ReactRelayTestMocker {
    */
   dataWrite(config: DataWriteConfig): void {
     const {query, variables, payload} = config;
-    const {createOperationSelector} = this._environment.unstable_internal;
+    const {createOperationDescriptor} = this._environment.unstable_internal;
 
-    const operationSelector = createOperationSelector(query, variables);
+    const operationDescriptor = createOperationDescriptor(query, variables);
 
     invariant(
       payload.data != null && payload.errors === undefined,
@@ -247,7 +238,7 @@ class ReactRelayTestMocker {
         'wrap your payload in an object like `{data: payload}`.',
     );
 
-    this._environment.commitPayload(operationSelector, payload.data);
+    this._environment.commitPayload(operationDescriptor, payload.data);
   }
 
   /**
@@ -266,14 +257,16 @@ class ReactRelayTestMocker {
     );
     const {query, variables, payload} = config;
 
-    const ident = ReactRelayTestMocker.getIdentifier(query);
+    const ident = ReactRelayTestMocker.getIdentifier(query.params);
 
     let usedVars;
 
     if (variables) {
-      const {createOperationSelector} = this._environment.unstable_internal;
-      const operationSelector = createOperationSelector(query, variables);
-      usedVars = ReactRelayTestMocker.stripUnused(operationSelector.variables);
+      const {createOperationDescriptor} = this._environment.unstable_internal;
+      const operationDescriptor = createOperationDescriptor(query, variables);
+      usedVars = ReactRelayTestMocker.stripUnused(
+        operationDescriptor.variables,
+      );
     }
 
     let toResolve;

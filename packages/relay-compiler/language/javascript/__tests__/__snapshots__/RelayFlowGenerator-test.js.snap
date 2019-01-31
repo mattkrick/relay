@@ -282,6 +282,125 @@ export type UnionTypeTest = {|
 |};
 `;
 
+exports[`RelayFlowGenerator matches expected output: match-field.graphql 1`] = `
+~~~~~~~~~~ INPUT ~~~~~~~~~~
+fragment NameRendererFragment on User {
+  id
+  nameRenderer @match {
+    ...PlainUserNameRenderer_name @module(name: "PlainUserNameRenderer.react")
+    ...MarkdownUserNameRenderer_name
+      @module(name: "MarkdownUserNameRenderer.react")
+  }
+}
+
+fragment PlainUserNameRenderer_name on PlainUserNameRenderer {
+  plaintext
+  data {
+    text
+  }
+}
+
+fragment MarkdownUserNameRenderer_name on MarkdownUserNameRenderer {
+  markdown
+  data {
+    markup
+  }
+}
+
+~~~~~~~~~~ OUTPUT ~~~~~~~~~~
+type MarkdownUserNameRenderer_name$ref = any;
+type PlainUserNameRenderer_name$ref = any;
+import type { FragmentReference, MatchPointer } from "relay-runtime";
+declare export opaque type NameRendererFragment$ref: FragmentReference;
+export type NameRendererFragment = {|
+  +id: string,
+  +nameRenderer: ?MatchPointer,
+  +$refType: NameRendererFragment$ref,
+|};
+
+import type { FragmentReference } from "relay-runtime";
+declare export opaque type PlainUserNameRenderer_name$ref: FragmentReference;
+export type PlainUserNameRenderer_name = {|
+  +plaintext: ?string,
+  +data: ?{|
+    +text: ?string
+  |},
+  +$refType: PlainUserNameRenderer_name$ref,
+|};
+
+import type { FragmentReference } from "relay-runtime";
+declare export opaque type MarkdownUserNameRenderer_name$ref: FragmentReference;
+export type MarkdownUserNameRenderer_name = {|
+  +markdown: ?string,
+  +data: ?{|
+    +markup: ?string
+  |},
+  +$refType: MarkdownUserNameRenderer_name$ref,
+|};
+`;
+
+exports[`RelayFlowGenerator matches expected output: match-field-in-query.graphql 1`] = `
+~~~~~~~~~~ INPUT ~~~~~~~~~~
+query NameRendererQuery {
+  me {
+    nameRenderer @match {
+      ...PlainUserNameRenderer_name @module(name: "PlainUserNameRenderer.react")
+      ...MarkdownUserNameRenderer_name
+        @module(name: "MarkdownUserNameRenderer.react")
+    }
+  }
+}
+
+fragment PlainUserNameRenderer_name on PlainUserNameRenderer {
+  plaintext
+  data {
+    text
+  }
+}
+
+fragment MarkdownUserNameRenderer_name on MarkdownUserNameRenderer {
+  markdown
+  data {
+    markup
+  }
+}
+
+~~~~~~~~~~ OUTPUT ~~~~~~~~~~
+type MarkdownUserNameRenderer_name$ref = any;
+type PlainUserNameRenderer_name$ref = any;
+import type { MatchPointer } from "relay-runtime";
+export type NameRendererQueryVariables = {||};
+export type NameRendererQueryResponse = {|
+  +me: ?{|
+    +nameRenderer: ?MatchPointer
+  |}
+|};
+export type NameRendererQuery = {|
+  variables: NameRendererQueryVariables,
+  response: NameRendererQueryResponse,
+|};
+
+import type { FragmentReference } from "relay-runtime";
+declare export opaque type PlainUserNameRenderer_name$ref: FragmentReference;
+export type PlainUserNameRenderer_name = {|
+  +plaintext: ?string,
+  +data: ?{|
+    +text: ?string
+  |},
+  +$refType: PlainUserNameRenderer_name$ref,
+|};
+
+import type { FragmentReference } from "relay-runtime";
+declare export opaque type MarkdownUserNameRenderer_name$ref: FragmentReference;
+export type MarkdownUserNameRenderer_name = {|
+  +markdown: ?string,
+  +data: ?{|
+    +markup: ?string
+  |},
+  +$refType: MarkdownUserNameRenderer_name$ref,
+|};
+`;
+
 exports[`RelayFlowGenerator matches expected output: mutation.graphql 1`] = `
 ~~~~~~~~~~ INPUT ~~~~~~~~~~
 mutation CommentCreateMutation(
@@ -301,17 +420,17 @@ mutation CommentCreateMutation(
 }
 
 ~~~~~~~~~~ OUTPUT ~~~~~~~~~~
-export type CommentCreateInput = {
+export type CommentCreateInput = {|
   clientMutationId?: ?string,
   feedbackId?: ?string,
   feedback?: ?CommentfeedbackFeedback,
-};
-export type CommentfeedbackFeedback = {
+|};
+export type CommentfeedbackFeedback = {|
   comment?: ?FeedbackcommentComment
-};
-export type FeedbackcommentComment = {
+|};
+export type FeedbackcommentComment = {|
   feedback?: ?CommentfeedbackFeedback
-};
+|};
 export type CommentCreateMutationVariables = {|
   input: CommentCreateInput,
   first?: ?number,
@@ -345,10 +464,10 @@ mutation InputHasArray($input: UpdateAllSeenStateInput) {
 }
 
 ~~~~~~~~~~ OUTPUT ~~~~~~~~~~
-export type UpdateAllSeenStateInput = {
+export type UpdateAllSeenStateInput = {|
   clientMutationId?: ?string,
   storyIds?: ?$ReadOnlyArray<?string>,
-};
+|};
 export type InputHasArrayVariables = {|
   input?: ?UpdateAllSeenStateInput
 |};
@@ -448,17 +567,17 @@ export type ExampleFragment = {|
   +$refType: ExampleFragment$ref,
 |};
 
-export type CommentCreateInput = {
+export type CommentCreateInput = {|
   clientMutationId?: ?string,
   feedbackId?: ?string,
   feedback?: ?CommentfeedbackFeedback,
-};
-export type CommentfeedbackFeedback = {
+|};
+export type CommentfeedbackFeedback = {|
   comment?: ?FeedbackcommentComment
-};
-export type FeedbackcommentComment = {
+|};
+export type FeedbackcommentComment = {|
   feedback?: ?CommentfeedbackFeedback
-};
+|};
 export type TestMutationVariables = {|
   input: CommentCreateInput
 |};
@@ -474,10 +593,10 @@ export type TestMutation = {|
   response: TestMutationResponse,
 |};
 
-export type FeedbackLikeInput = {
+export type FeedbackLikeInput = {|
   clientMutationId?: ?string,
   feedbackId?: ?string,
-};
+|};
 export type TestSubscriptionVariables = {|
   input?: ?FeedbackLikeInput
 |};

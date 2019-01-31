@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -30,7 +30,7 @@ type FinderState = {
   dataID: DataID,
   missingData: boolean,
   path: QueryPath,
-  rangeCalls: ?Array<Call>,
+  rangeCalls: ?$ReadOnlyArray<Call>,
   rangeInfo: ?RangeInfo,
 };
 
@@ -42,7 +42,7 @@ export type NodeState = {
   dataID: ?DataID,
   node: RelayQuery.Node,
   path: QueryPath,
-  rangeCalls: ?Array<Call>,
+  rangeCalls: ?$ReadOnlyArray<Call>,
 };
 
 /**
@@ -62,7 +62,7 @@ function findRelayQueryLeaves(
   queryNode: RelayQuery.Node,
   dataID: DataID,
   path: QueryPath,
-  rangeCalls: ?Array<Call>,
+  rangeCalls: ?$ReadOnlyArray<Call>,
 ): FinderResult {
   const finder = new RelayQueryLeavesFinder(store, cachedRecords);
 

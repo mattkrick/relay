@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -41,7 +41,7 @@ export type Observer<-T> = {|
  * The methods are to be called to trigger each event. It also contains a closed
  * field to see if the resulting subscription has closed.
  */
-type Sink<-T> = {|
+export type Sink<-T> = {|
   +next: T => void,
   +error: (Error, isUncaughtThrownError?: boolean) => void,
   +complete: () => void,
@@ -54,7 +54,7 @@ type Sink<-T> = {|
  * and may return either a cleanup function or a Subscription instance (for use
  * when composing Observables).
  */
-type Source<+T> = (Sink<T>) => void | Subscription | (() => mixed);
+export type Source<+T> = (Sink<T>) => void | Subscription | (() => mixed);
 
 /**
  * A Subscribable is an interface describing any object which can be subscribed.
@@ -321,7 +321,23 @@ class RelayObservable<+T> implements Subscribable<T> {
    * the mapping function.
    */
   map<U>(fn: T => U): RelayObservable<U> {
-    return this.mergeMap(value => fromValue(fn(value)));
+    return RelayObservable.create(sink => {
+      const subscription = this.subscribe({
+        complete: sink.complete,
+        error: sink.error,
+        next: value => {
+          try {
+            const mapValue = fn(value);
+            sink.next(mapValue);
+          } catch (error) {
+            sink.error(error, true /* isUncaughtThrownError */);
+          }
+        },
+      });
+      return () => {
+        subscription.unsubscribe();
+      };
+    });
   }
 
   /**

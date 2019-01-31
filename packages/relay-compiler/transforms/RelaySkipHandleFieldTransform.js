@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,9 +10,10 @@
 
 'use strict';
 
-const {CompilerContext, IRTransformer} = require('graphql-compiler');
+const CompilerContext = require('../core/GraphQLCompilerContext');
+const IRTransformer = require('../core/GraphQLIRTransformer');
 
-import type {LinkedField, ScalarField} from 'graphql-compiler';
+import type {Field} from '../core/GraphQLIR';
 
 /**
  * A transform that removes field `handles`. Intended for use when e.g.
@@ -23,11 +24,12 @@ function relaySkipHandleFieldTransform(
 ): CompilerContext {
   return IRTransformer.transform(context, {
     LinkedField: visitField,
+    MatchField: visitField,
     ScalarField: visitField,
   });
 }
 
-function visitField<F: LinkedField | ScalarField>(field: F): ?F {
+function visitField<F: Field>(field: F): ?F {
   const transformedNode = this.traverse(field);
   if (transformedNode.handles) {
     return {

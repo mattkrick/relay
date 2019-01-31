@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -16,7 +16,6 @@ const createModernNode = require('./createModernNode');
 const getFragmentNameParts = require('./getFragmentNameParts');
 
 import type {BabelState} from './BabelPluginRelay';
-import typeof BabelTypes from 'babel-types';
 import type {DocumentNode} from 'graphql';
 
 /**
@@ -24,7 +23,7 @@ import type {DocumentNode} from 'graphql';
  * runtime artifact.
  */
 function compileGraphQLTag(
-  t: BabelTypes,
+  t: $FlowFixMe,
   path: Object,
   state: BabelState,
   ast: DocumentNode,

@@ -1,9 +1,8 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
- *
  *
  * @noformat
  */
@@ -14,24 +13,45 @@ const babel = require('gulp-babel');
 const babelOptions = require('./scripts/getBabelOptions')({
   ast: false,
   moduleMap: {
-    '@babel/generator': '@babel/generator',
+    '@babel/core': '@babel/core',
     '@babel/parser': '@babel/parser',
+    '@babel/polyfill': '@babel/polyfill',
+    '@babel/traverse': '@babel/traverse',
     '@babel/types': '@babel/types',
-    'babel-core': 'babel-core',
+    '@babel/plugin-proposal-nullish-coalescing-operator':
+      '@babel/plugin-proposal-nullish-coalescing-operator',
+    '@babel/plugin-proposal-optional-chaining':
+      '@babel/plugin-proposal-optional-chaining',
+    '@babel/plugin-transform-runtime': '@babel/plugin-transform-runtime',
+    '@babel/plugin-transform-flow-strip-types':
+      '@babel/plugin-transform-flow-strip-types',
+    '@babel/generator': '@babel/generator',
+    '@babel/generator/lib/printer': '@babel/generator/lib/printer',
+    '@babel/runtime/helpers/assertThisInitialized':
+      '@babel/runtime/helpers/assertThisInitialized',
+    '@babel/runtime/helpers/asyncToGenerator':
+      '@babel/runtime/helpers/asyncToGenerator',
+    '@babel/runtime/helpers/classCallCheck':
+      '@babel/runtime/helpers/classCallCheck',
+    '@babel/runtime/helpers/defineProperty':
+      '@babel/runtime/helpers/defineProperty',
+    '@babel/runtime/helpers/extends': '@babel/runtime/helpers/extends',
+    '@babel/runtime/helpers/inherits': '@babel/runtime/helpers/inherits',
+    '@babel/runtime/helpers/inheritsLoose':
+      '@babel/runtime/helpers/inheritsLoose',
+    '@babel/runtime/helpers/interopRequireDefault':
+      '@babel/runtime/helpers/interopRequireDefault',
+    '@babel/runtime/helpers/objectSpread':
+      '@babel/runtime/helpers/objectSpread',
+    '@babel/runtime/helpers/objectWithoutProperties':
+      '@babel/runtime/helpers/objectWithoutProperties',
+    '@babel/runtime/helpers/objectWithoutPropertiesLoose':
+      '@babel/runtime/helpers/objectWithoutPropertiesLoose',
+    '@babel/runtime/helpers/possibleConstructorReturn':
+      '@babel/runtime/helpers/possibleConstructorReturn',
+    '@babel/runtime/helpers/toConsumableArray':
+      '@babel/runtime/helpers/toConsumableArray',
     'babel-plugin-macros': 'babel-plugin-macros',
-    'babel-generator': 'babel-generator',
-    'babel-generator/lib/printer': 'babel-generator/lib/printer',
-    'babel-polyfill': 'babel-polyfill',
-    'babel-runtime/helpers/asyncToGenerator': 'babel-runtime/helpers/asyncToGenerator',
-    'babel-runtime/helpers/classCallCheck': 'babel-runtime/helpers/classCallCheck',
-    'babel-runtime/helpers/defineProperty': 'babel-runtime/helpers/defineProperty',
-    'babel-runtime/helpers/extends': 'babel-runtime/helpers/extends',
-    'babel-runtime/helpers/inherits': 'babel-runtime/helpers/inherits',
-    'babel-runtime/helpers/objectWithoutProperties': 'babel-runtime/helpers/objectWithoutProperties',
-    'babel-runtime/helpers/possibleConstructorReturn': 'babel-runtime/helpers/possibleConstructorReturn',
-    'babel-runtime/helpers/toConsumableArray': 'babel-runtime/helpers/toConsumableArray',
-    'babel-traverse': 'babel-traverse',
-    'babel-types': 'babel-types',
     chalk: 'chalk',
     child_process: 'child_process',
     crypto: 'crypto',
@@ -39,7 +59,6 @@ const babelOptions = require('./scripts/getBabelOptions')({
     'fb-watchman': 'fb-watchman',
     fs: 'fs',
     graphql: 'graphql',
-    'graphql-compiler': 'graphql-compiler',
     immutable: 'immutable',
     iterall: 'iterall',
     net: 'net',
@@ -59,18 +78,20 @@ const babelOptions = require('./scripts/getBabelOptions')({
     yargs: 'yargs',
   },
   plugins: [
-    'transform-flow-strip-types',
-    ['transform-runtime', {polyfill: false}],
+    '@babel/plugin-transform-flow-strip-types',
+    '@babel/plugin-transform-runtime',
+    '@babel/plugin-proposal-nullish-coalescing-operator',
+    '@babel/plugin-proposal-optional-catch-binding',
+    '@babel/plugin-proposal-optional-chaining',
   ],
   postPlugins: [
-    'transform-async-to-generator',
-    'transform-es2015-modules-commonjs',
+    '@babel/plugin-transform-async-to-generator',
+    '@babel/plugin-transform-modules-commonjs',
   ],
   sourceType: 'script',
 });
 const del = require('del');
 const derequire = require('gulp-derequire');
-const es = require('event-stream');
 const flatten = require('gulp-flatten');
 const fs = require('fs');
 const gulp = require('gulp');
@@ -79,6 +100,7 @@ const gulpUtil = require('gulp-util');
 const header = require('gulp-header');
 const path = require('path');
 const runSequence = require('run-sequence');
+const webpack = require('webpack');
 const webpackStream = require('webpack-stream');
 
 const SCRIPT_HASHBANG = '#!/usr/bin/env node\n';
@@ -99,7 +121,6 @@ const PRODUCTION_HEADER =
 
 const buildDist = function(filename, opts, isProduction) {
   const webpackOpts = {
-    debug: !isProduction,
     externals: [/^[-/a-zA-Z0-9]+$/],
     target: opts.target,
     node: {
@@ -120,22 +141,16 @@ const buildDist = function(filename, opts, isProduction) {
           isProduction ? 'production' : 'development'
         ),
       }),
-      new webpackStream.webpack.optimize.OccurenceOrderPlugin(),
-      new webpackStream.webpack.optimize.DedupePlugin(),
+      new webpackStream.webpack.optimize.OccurrenceOrderPlugin(),
     ],
   };
   if (isProduction && !opts.noMinify) {
-    webpackOpts.plugins.push(
-      new webpackStream.webpack.optimize.UglifyJsPlugin({
-        compress: {
-          hoist_vars: true,
-          screw_ie8: true,
-          warnings: false,
-        },
-      })
-    );
+    // See more chunks configuration here: https://gist.github.com/sokra/1522d586b8e5c0f5072d7565c2bee693
+    webpackOpts.optimization = {
+      minimize: true,
+    };
   }
-  return webpackStream(webpackOpts, null, function(err, stats) {
+  return webpackStream(webpackOpts, webpack, function(err, stats) {
     if (err) {
       throw new gulpUtil.PluginError('webpack', err);
     }
@@ -219,29 +234,13 @@ const builds = [
     ],
   },
   {
-    package: 'graphql-compiler',
-    exports: {
-      index: 'GraphQLCompilerPublic.js',
-    },
-    bundles: [
-      {
-        entry: 'GraphQLCompilerPublic.js',
-        output: 'graphql-compiler',
-        libraryName: 'GraphQLCompiler',
-        libraryTarget: 'commonjs2',
-        target: 'node',
-        noMinify: true, // Note: uglify can't yet handle modern JS
-      },
-    ],
-  },
-  {
     package: 'relay-runtime',
     exports: {
       index: 'index.js',
     },
     bundles: [
       {
-        entry: 'RelayRuntime.js',
+        entry: 'index.js',
         output: 'relay-runtime',
         libraryName: 'RelayRuntime',
         libraryTarget: 'umd',
@@ -265,127 +264,127 @@ const builds = [
   },
 ];
 
-gulp.task('clean', function() {
+function clean() {
   return del(DIST);
-});
+}
 
-gulp.task('modules', function() {
-  return es.merge(
-    builds.map(build =>
-      gulp
-        .src([
-          '*' + PACKAGES + '/' + build.package + '/**/*.js',
-          '!' + PACKAGES + '/**/__tests__/**/*.js',
-          '!' + PACKAGES + '/**/__mocks__/**/*.js',
-        ])
-        .pipe(babel(babelOptions))
-        .pipe(flatten())
-        .pipe(gulp.dest(path.join(DIST, build.package, 'lib')))
-    )
-  );
-});
-
-gulp.task('copy-files', function() {
-  return es.merge(
-    builds.map(build =>
-      es.merge([
-        gulp
+const modules = gulp.parallel(
+  ...builds.map(
+    build =>
+      function modulesTask() {
+        return gulp
           .src([
-            'LICENSE',
-            '*' + PACKAGES + '/' + build.package + '/*',
-            '!' + PACKAGES + '/' + build.package + '/*.graphql',
-            '!' + PACKAGES + '/' + build.package + '/**/*.js',
+            '*' + PACKAGES + '/' + build.package + '/**/*.js',
+            '!' + PACKAGES + '/**/__tests__/**/*.js',
+            '!' + PACKAGES + '/**/__mocks__/**/*.js',
           ])
+          .pipe(babel(babelOptions))
           .pipe(flatten())
-          .pipe(gulp.dest(path.join(DIST, build.package))),
-        gulp // Move *.graphql files directly to lib without going through babel
-          .src(['*' + PACKAGES + '/' + build.package + '/*.graphql'])
-          .pipe(flatten())
-          .pipe(gulp.dest(path.join(DIST, build.package, 'lib'))),
+          .pipe(gulp.dest(path.join(DIST, build.package, 'lib')));
+      }
+  )
+);
+
+const copyFilesTasks = [];
+builds.forEach(build => {
+  copyFilesTasks.push(function copyFileTask() {
+    return gulp
+      .src([
+        'LICENSE',
+        '*' + PACKAGES + '/' + build.package + '/*',
+        '!' + PACKAGES + '/' + build.package + '/*.graphql',
+        '!' + PACKAGES + '/' + build.package + '/**/*.js',
       ])
-    )
-  );
+      .pipe(flatten())
+      .pipe(gulp.dest(path.join(DIST, build.package)));
+  });
+  copyFilesTasks.push(function copyLibFileTask() {
+    return gulp // Move *.graphql files directly to lib without going through babel
+      .src(['*' + PACKAGES + '/' + build.package + '/*.graphql'])
+      .pipe(flatten())
+      .pipe(gulp.dest(path.join(DIST, build.package, 'lib')));
+  });
 });
+const copyFiles = gulp.parallel(copyFilesTasks);
 
-gulp.task('exports', ['copy-files', 'modules'], function() {
-  builds.map(build =>
-    Object.keys(build.exports).map(exportName =>
-      fs.writeFileSync(
-        path.join(DIST, build.package, exportName + '.js'),
-        PRODUCTION_HEADER +
-          `\nmodule.exports = require('./lib/${build.exports[exportName]}');\n`
-      )
-    )
-  );
-});
-
-gulp.task('bins', ['modules'], function() {
-  const buildsWithBins = builds.filter(build => build.bins);
-  return es.merge(
-    buildsWithBins.map(build =>
-      es.merge(
-        build.bins.map(bin =>
-          gulp
-            .src(path.join(DIST, build.package, 'lib', bin.entry))
-            .pipe(buildDist(bin.output, bin, /* isProduction */ false))
-            .pipe(header(SCRIPT_HASHBANG + PRODUCTION_HEADER))
-            .pipe(chmod(0o755))
-            .pipe(gulp.dest(path.join(DIST, build.package, 'bin')))
-        )
-      )
-    )
-  );
-});
-
-gulp.task('bundles', ['modules'], function() {
-  return es.merge(
-    builds.map(build =>
-      es.merge(
-        build.bundles.map(bundle =>
-          gulp
-            .src(path.join(DIST, build.package, 'lib', bundle.entry))
-            .pipe(
-              buildDist(
-                bundle.output + '.js',
-                bundle,
-                /* isProduction */ false
-              )
+const exportsFiles = gulp.series(
+  copyFiles,
+  modules,
+  gulp.parallel(
+    ...builds.map(
+      build =>
+        function exportsFilesTask(done) {
+          Object.keys(build.exports).map(exportName =>
+            fs.writeFileSync(
+              path.join(DIST, build.package, exportName + '.js'),
+              PRODUCTION_HEADER +
+                `\nmodule.exports = require('./lib/${
+                  build.exports[exportName]
+                }');\n`
             )
-            .pipe(derequire())
-            .pipe(header(DEVELOPMENT_HEADER))
-            .pipe(gulp.dest(path.join(DIST, build.package)))
-        )
-      )
+          );
+          done();
+        }
     )
-  );
-});
+  )
+);
 
-gulp.task('bundles:min', ['modules'], function() {
-  return es.merge(
-    builds.map(build =>
-      es.merge(
-        build.bundles.map(bundle =>
-          gulp
-            .src(path.join(DIST, build.package, 'lib', bundle.entry))
-            .pipe(
-              buildDist(
-                bundle.output + '.min.js',
-                bundle,
-                /* isProduction */ true
-              )
-            )
-            .pipe(header(PRODUCTION_HEADER))
-            .pipe(gulp.dest(path.join(DIST, build.package)))
+const binsTasks = [];
+builds.forEach(build => {
+  if (build.bins) {
+    build.bins.forEach(bin => {
+      binsTasks.push(function binsTask() {
+        return gulp
+          .src(path.join(DIST, build.package, 'lib', bin.entry))
+          .pipe(buildDist(bin.output, bin, /* isProduction */ false))
+          .pipe(header(SCRIPT_HASHBANG + PRODUCTION_HEADER))
+          .pipe(chmod(0o755))
+          .pipe(gulp.dest(path.join(DIST, build.package, 'bin')));
+      });
+    });
+  }
+});
+const bins = gulp.series(binsTasks);
+
+const bundlesTasks = [];
+builds.forEach(build => {
+  build.bundles.forEach(bundle => {
+    bundlesTasks.push(function bundleTask() {
+      return gulp
+        .src(path.join(DIST, build.package, 'lib', bundle.entry))
+        .pipe(
+          buildDist(bundle.output + '.js', bundle, /* isProduction */ false)
         )
-      )
-    )
-  );
+        .pipe(derequire())
+        .pipe(header(DEVELOPMENT_HEADER))
+        .pipe(gulp.dest(path.join(DIST, build.package)));
+    });
+  });
 });
+const bundles = gulp.series(bundlesTasks);
 
-gulp.task('watch', function() {
-  gulp.watch(PACKAGES + '/**/*.js', ['exports', 'bundles']);
+const bundlesMinTasks = [];
+builds.forEach(build => {
+  build.bundles.forEach(bundle => {
+    bundlesMinTasks.push(function bundlesMinTask() {
+      return gulp
+        .src(path.join(DIST, build.package, 'lib', bundle.entry))
+        .pipe(
+          buildDist(bundle.output + '.min.js', bundle, /* isProduction */ true)
+        )
+        .pipe(header(PRODUCTION_HEADER))
+        .pipe(gulp.dest(path.join(DIST, build.package)));
+    });
+  });
 });
+const bundlesMin = gulp.series(bundlesMinTasks);
 
-gulp.task('default', function(cb) {
-  runSequence('clean', ['exports', 'bins', 'bundles', 'bundles:min'], cb);
-});
+const dist = gulp.series(exportsFiles, bins, bundles, bundlesMin);
+
+function watch() {
+  gulp.watch(PACKAGES + '/**/*.js', [exportsFiles, bundles]);
+}
+
+exports.clean = clean;
+exports.watch = watch;
+exports.default = gulp.series(clean, dist);

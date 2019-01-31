@@ -33,6 +33,8 @@ Using Relay in your production app? If you'd like to add your team to the list, 
 ## F
 
 - [Facebook](https://www.facebook.com/)
+- [Flexport](https://www.flexport.com/)
+- [Flybondi](https://flybondi.com/)
 
 ## H
 
@@ -75,6 +77,7 @@ Using Relay in your production app? If you'd like to add your team to the list, 
 
 - [Sainsburys](https://sainsburys.co.uk/)
 - [Sigma](https://sig.ma)
+- [Skupos](https://www.skupos.com)
 
 ## T
 

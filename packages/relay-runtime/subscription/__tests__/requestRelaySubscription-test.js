@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -14,8 +14,8 @@
 const requestRelaySubscription = require('../requestRelaySubscription');
 
 const {
-  createOperationSelector,
-} = require('../../store/RelayModernOperationSelector');
+  createOperationDescriptor,
+} = require('../../store/RelayModernOperationDescriptor');
 const {ROOT_ID} = require('../../store/RelayStoreUtils');
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
 const {generateAndCompile} = require('RelayModernTestUtils');
@@ -74,10 +74,13 @@ describe('requestRelaySubscription-test', () => {
         },
       },
     };
-    const operationSelector = createOperationSelector(FeedbackCommentQuery, {
-      id: feedbackId,
-    });
-    environment.commitPayload(operationSelector, payload);
+    const operationDescriptor = createOperationDescriptor(
+      FeedbackCommentQuery,
+      {
+        id: feedbackId,
+      },
+    );
+    environment.commitPayload(operationDescriptor, payload);
 
     const {CommentCreateSubscription} = generateAndCompile(`
       subscription CommentCreateSubscription(

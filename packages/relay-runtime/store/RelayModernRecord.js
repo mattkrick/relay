@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -13,6 +13,7 @@
 const areEqual = require('areEqual');
 const deepFreeze = require('../util/deepFreeze');
 const invariant = require('invariant');
+const warning = require('warning');
 
 const {
   ID_KEY,
@@ -22,8 +23,8 @@ const {
   UNPUBLISH_FIELD_SENTINEL,
 } = require('./RelayStoreUtils');
 
+import type {Record} from '../util/RelayCombinedEnvironmentTypes';
 import type {DataID} from '../util/RelayRuntimeTypes';
-import type {Record} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
 
 /**
  * @public
@@ -173,7 +174,7 @@ function getLinkedRecordID(record: Record, storageKey: string): ?DataID {
       'was `%s`.',
     record[ID_KEY],
     storageKey,
-    link,
+    JSON.stringify(link),
   );
   return link[REF_KEY];
 }
@@ -212,12 +213,37 @@ function getLinkedRecordIDs(
  * if any fields have changed.
  */
 function update(prevRecord: Record, nextRecord: Record): Record {
-  let updated: ?Record;
+  if (__DEV__) {
+    const prevID = getDataID(prevRecord);
+    const nextID = getDataID(nextRecord);
+    warning(
+      prevID === nextID,
+      'RelayModernRecord: Invalid record update, expected both versions of ' +
+        'the record to have the same id, got `%s` and `%s`.',
+      prevID,
+      nextID,
+    );
+    // note: coalesce null/undefined to null
+    const prevType = getType(prevRecord) ?? null;
+    const nextType = getType(nextRecord) ?? null;
+    warning(
+      prevType === nextType,
+      'RelayModernRecord: Invalid record update, expected both versions of ' +
+        'record `%s` to have the same `%s` but got conflicting types `%s` ' +
+        'and `%s`. The GraphQL server likely violated the globally unique ' +
+        'id requirement by returning the same id for different objects.',
+      prevID,
+      TYPENAME_KEY,
+      prevType,
+      nextType,
+    );
+  }
+  let updated: Record | null = null;
   const keys = Object.keys(nextRecord);
   for (let ii = 0; ii < keys.length; ii++) {
     const key = keys[ii];
     if (updated || !areEqual(prevRecord[key], nextRecord[key])) {
-      updated = updated || {...prevRecord};
+      updated = updated !== null ? updated : {...prevRecord};
       if (nextRecord[key] !== UNPUBLISH_FIELD_SENTINEL) {
         updated[key] = nextRecord[key];
       } else {
@@ -225,7 +251,7 @@ function update(prevRecord: Record, nextRecord: Record): Record {
       }
     }
   }
-  return updated || prevRecord;
+  return updated !== null ? updated : prevRecord;
 }
 
 /**
@@ -235,6 +261,31 @@ function update(prevRecord: Record, nextRecord: Record): Record {
  * second record will overwrite identical fields in the first record.
  */
 function merge(record1: Record, record2: Record): Record {
+  if (__DEV__) {
+    const prevID = getDataID(record1);
+    const nextID = getDataID(record2);
+    warning(
+      prevID === nextID,
+      'RelayModernRecord: Invalid record merge, expected both versions of ' +
+        'the record to have the same id, got `%s` and `%s`.',
+      prevID,
+      nextID,
+    );
+    // note: coalesce null/undefined to null
+    const prevType = getType(record1) ?? null;
+    const nextType = getType(record2) ?? null;
+    warning(
+      prevType === nextType,
+      'RelayModernRecord: Invalid record merge, expected both versions of ' +
+        'record `%s` to have the same `%s` but got conflicting types `%s` ' +
+        'and `%s`. The GraphQL server likely violated the globally unique ' +
+        'id requirement by returning the same id for different objects.',
+      prevID,
+      TYPENAME_KEY,
+      prevType,
+      nextType,
+    );
+  }
   return Object.assign({}, record1, record2);
 }
 
@@ -254,6 +305,33 @@ function freeze(record: Record): void {
  * Set the value of a storageKey to a scalar.
  */
 function setValue(record: Record, storageKey: string, value: mixed): void {
+  if (__DEV__) {
+    const prevID = getDataID(record);
+    if (storageKey === ID_KEY) {
+      warning(
+        prevID === value,
+        'RelayModernRecord: Invalid field update, expected both versions of ' +
+          'the record to have the same id, got `%s` and `%s`.',
+        prevID,
+        value,
+      );
+    } else if (storageKey === TYPENAME_KEY) {
+      // note: coalesce null/undefined to null
+      const prevType = getType(record) ?? null;
+      const nextType = value ?? null;
+      warning(
+        prevType === nextType,
+        'RelayModernRecord: Invalid field update, expected both versions of ' +
+          'record `%s` to have the same `%s` but got conflicting types `%s` ' +
+          'and `%s`. The GraphQL server likely violated the globally unique ' +
+          'id requirement by returning the same id for different objects.',
+        prevID,
+        TYPENAME_KEY,
+        prevType,
+        nextType,
+      );
+    }
+  }
   record[storageKey] = value;
 }
 

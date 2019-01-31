@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -20,7 +20,7 @@ import type {ConcreteCall} from './ConcreteQuery';
  *
  * Convert from plain object `{name, value}` calls to GraphQL call nodes.
  */
-function callsToGraphQL(calls: Array<Call>): Array<ConcreteCall> {
+function callsToGraphQL(calls: $ReadOnlyArray<Call>): Array<ConcreteCall> {
   return calls.map(({name, type, value}) => {
     let concreteValue = null;
     if (Array.isArray(value)) {

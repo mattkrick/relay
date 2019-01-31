@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -15,8 +15,10 @@ const RelayFragmentSpecResolver = require('./RelayFragmentSpecResolver');
 const {
   getClassicFragment,
   getClassicOperation,
+  isClassicFragment,
+  isClassicOperation,
 } = require('../query/RelayGraphQLTag');
-const {createOperationSelector} = require('./RelayOperationSelector');
+const {createOperationDescriptor} = require('./RelayOperationDescriptor');
 const {
   areEqualSelectors,
   getDataIDsFromObject,
@@ -27,10 +29,11 @@ const {
 } = require('./RelaySelector');
 
 import type {
+  FragmentMap,
   FragmentSpecResolver,
-  Props,
-} from './RelayCombinedEnvironmentTypes';
-import type {FragmentMap, RelayContext} from './RelayEnvironmentTypes';
+  RelayContext,
+} from './RelayEnvironmentTypes';
+import type {Props} from 'relay-runtime';
 
 function createFragmentSpecResolver(
   context: RelayContext,
@@ -49,7 +52,7 @@ function createFragmentSpecResolver(
 module.exports = {
   areEqualSelectors,
   createFragmentSpecResolver,
-  createOperationSelector,
+  createOperationDescriptor,
   getDataIDsFromObject,
   getFragment: getClassicFragment,
   getRequest: getClassicOperation,
@@ -57,4 +60,6 @@ module.exports = {
   getSelectorList,
   getSelectorsFromObject,
   getVariablesFromObject,
+  isFragment: isClassicFragment,
+  isRequest: isClassicOperation,
 };

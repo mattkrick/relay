@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,64 +11,77 @@
 'use strict';
 
 import type {
-  ExecutePayload,
+  GraphQLResponse,
   PayloadError,
-  StreamPayload,
   UploadableMap,
 } from '../network/RelayNetworkTypes';
 import type {PayloadData} from '../network/RelayNetworkTypes';
 import type RelayObservable from '../network/RelayObservable';
 import type {GraphQLTaggedNode} from '../query/RelayModernGraphQLTag';
 import type {
-  ConcreteScalarField,
-  ConcreteLinkedField,
-  ConcreteFragment,
-  ConcreteSelectableNode,
-  RequestNode,
-  ConcreteOperation,
-} from '../util/RelayConcreteNode';
-import type {
-  CacheConfig,
-  DataID,
-  Disposable,
-  Variables,
-} from '../util/RelayRuntimeTypes';
-import type {RecordState} from './RelayRecordState';
+  NormalizationScalarField,
+  NormalizationLinkedField,
+  NormalizationSelectableNode,
+  NormalizationSplitOperation,
+} from '../util/NormalizationNode';
+import type {ReaderFragment} from '../util/ReaderNode';
+import type {ReaderSelectableNode} from '../util/ReaderNode';
 import type {
   CEnvironment,
   CFragmentMap,
-  COperationSelector,
+  CFragmentSpecResolver,
+  COperationDescriptor,
   CRelayContext,
-  CSelector,
+  CReaderSelector,
+  CNormalizationSelector,
   CSnapshot,
   CUnstableEnvironmentCore,
   Record,
-} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
+} from '../util/RelayCombinedEnvironmentTypes';
+import type {ConcreteRequest} from '../util/RelayConcreteNode';
+import type {DataID, Disposable, Variables} from '../util/RelayRuntimeTypes';
+import type {RecordState} from './RelayRecordState';
 
-// eslint-disable-next-line no-undef
+export type {SelectorData} from '../util/RelayCombinedEnvironmentTypes';
+
 export opaque type FragmentReference = empty;
 
 type TEnvironment = Environment;
-type TFragment = ConcreteFragment;
+type TFragment = ReaderFragment;
 type TGraphQLTaggedNode = GraphQLTaggedNode;
-type TNode = ConcreteSelectableNode;
-type TPayload = ExecutePayload;
-type TRequest = RequestNode;
-type TOperation = ConcreteOperation;
+type TReaderNode = ReaderSelectableNode;
+type TNormalizationNode = NormalizationSelectableNode;
+type TPayload = GraphQLResponse;
+type TRequest = ConcreteRequest;
+type TReaderSelector = OwnedReaderSelector;
 
 export type FragmentMap = CFragmentMap<TFragment>;
-export type OperationSelector = COperationSelector<TNode, TRequest>;
+
+export type OperationDescriptor = COperationDescriptor<
+  TReaderNode,
+  TNormalizationNode,
+  TRequest,
+>;
+
 export type RelayContext = CRelayContext<TEnvironment>;
-export type Selector = CSelector<TNode>;
-export type Snapshot = CSnapshot<TNode>;
+export type ReaderSelector = CReaderSelector<TReaderNode>;
+export type OwnedReaderSelector = {|
+  owner: OperationDescriptor | null,
+  selector: ReaderSelector,
+|};
+export type NormalizationSelector = CNormalizationSelector<TNormalizationNode>;
+export type Snapshot = CSnapshot<TReaderNode, OperationDescriptor>;
 export type UnstableEnvironmentCore = CUnstableEnvironmentCore<
   TEnvironment,
   TFragment,
   TGraphQLTaggedNode,
-  TNode,
+  TReaderNode,
+  TNormalizationNode,
   TRequest,
-  TOperation,
+  TReaderSelector,
 >;
+
+export interface FragmentSpecResolver extends CFragmentSpecResolver<TRequest> {}
 
 /**
  * A read-only interface for accessing cached graph data.
@@ -109,12 +122,14 @@ export interface Store {
    * Determine if the selector can be resolved with data in the store (i.e. no
    * fields are missing).
    */
-  check(selector: Selector): boolean;
+  check(selector: NormalizationSelector): boolean;
 
   /**
    * Read the results of a selector from in-memory records in the store.
+   * Optionally takes an owner, corresponding to the operation that
+   * owns this selector (fragment).
    */
-  lookup(selector: Selector): Snapshot;
+  lookup(selector: ReaderSelector, owner?: ?OperationDescriptor): Snapshot;
 
   /**
    * Notify subscribers (see `subscribe`) of any data that was published
@@ -134,7 +149,7 @@ export interface Store {
    * retained in-memory. The records will not be eligible for garbage collection
    * until the returned reference is disposed.
    */
-  retain(selector: Selector): Disposable;
+  retain(selector: NormalizationSelector): Disposable;
 
   /**
    * Subscribe to changes to the results of a selector. The callback is called
@@ -152,6 +167,12 @@ export interface Store {
    */
   holdGC(): Disposable;
 }
+
+/**
+ * A type that accepts a callback and schedules it to run at some future time.
+ * By convention, implementations should not execute the callback immediately.
+ */
+export type Scheduler = (() => void) => void;
 
 /**
  * An interface for imperatively getting/setting properties of a `Record`. This interface
@@ -184,6 +205,14 @@ export interface RecordProxy {
   setValue(value: mixed, name: string, args?: ?Variables): RecordProxy;
 }
 
+export interface ReadOnlyRecordProxy {
+  getDataID(): DataID;
+  getLinkedRecord(name: string, args?: ?Variables): ?RecordProxy;
+  getLinkedRecords(name: string, args?: ?Variables): ?Array<?RecordProxy>;
+  getType(): string;
+  getValue(name: string, args?: ?Variables): mixed;
+}
+
 /**
  * An interface for imperatively getting/setting properties of a `RecordSource`. This interface
  * is designed to allow the appearance of direct RecordSource manipulation while
@@ -195,6 +224,11 @@ export interface RecordSourceProxy {
   delete(dataID: DataID): void;
   get(dataID: DataID): ?RecordProxy;
   getRoot(): RecordProxy;
+}
+
+export interface ReadOnlyRecordSourceProxy {
+  get(dataID: DataID): ?ReadOnlyRecordProxy;
+  getRoot(): ReadOnlyRecordProxy;
 }
 
 /**
@@ -219,10 +253,11 @@ export interface Environment
     TEnvironment,
     TFragment,
     TGraphQLTaggedNode,
-    TNode,
+    TReaderNode,
+    TNormalizationNode,
     TRequest,
     TPayload,
-    TOperation,
+    TReaderSelector,
   > {
   /**
    * Apply an optimistic update to the environment. The mutation can be reverted
@@ -241,7 +276,7 @@ export interface Environment
    * Commit a payload to the environment using the given operation selector.
    */
   commitPayload(
-    operationSelector: OperationSelector,
+    operationDescriptor: OperationDescriptor,
     payload: PayloadData,
   ): void;
 
@@ -251,18 +286,17 @@ export interface Environment
   getStore(): Store;
 
   /**
-   * Returns an Observable that can also possibly include event payloads.
-   * Contrast this with .execute({...}), which will ignore any events pushed
-   * to the Observable.
+   * Read the results of a selector from in-memory records in the store.
+   * Optionally takes an owner, corresponding to the operation that
+   * owns this selector (fragment).
    */
-  executeWithEvents({|
-    operation: OperationSelector,
-    cacheConfig?: ?CacheConfig,
-    updater?: ?SelectorStoreUpdater,
-  |}): RelayObservable<StreamPayload>;
+  lookup(
+    selector: ReaderSelector,
+    owner?: ?OperationDescriptor,
+  ): CSnapshot<TReaderNode, OperationDescriptor>;
 
   /**
-   * Returns an Observable of ExecutePayload resulting from executing the
+   * Returns an Observable of GraphQLResponse resulting from executing the
    * provided Mutation operation, the result of which is then normalized and
    * committed to the publish queue along with an optional optimistic response
    * or updater.
@@ -272,18 +306,12 @@ export interface Environment
    * environment.executeMutation({...}).subscribe({...}).
    */
   executeMutation({|
-    operation: OperationSelector,
+    operation: OperationDescriptor,
     optimisticUpdater?: ?SelectorStoreUpdater,
     optimisticResponse?: ?Object,
     updater?: ?SelectorStoreUpdater,
     uploadables?: ?UploadableMap,
-  |}): RelayObservable<ExecutePayload>;
-
-  /**
-   * Checks if the environment is waiting for a response from the network for
-   * a deferred fragment.
-   */
-  isSelectorLoading(selector: Selector): boolean;
+  |}): RelayObservable<GraphQLResponse>;
 }
 
 /**
@@ -293,7 +321,19 @@ export interface Environment
 export type FragmentPointer = {
   __id: DataID,
   __fragments: {[fragmentName: string]: Variables},
+  __fragmentOwner: OperationDescriptor | null,
 };
+
+/**
+ * The results of reading a field that was marked with a @match directive
+ */
+export type MatchPointer = {|
+  __id: DataID,
+  __fragments: {[fragmentName: string]: Variables},
+  __fragmentOwner: OperationDescriptor | null,
+  __fragmentPropName: string,
+  __module: mixed,
+|};
 
 /**
  * A callback for resolving a Selector from a source.
@@ -321,19 +361,82 @@ export type Handler = {
  * A payload that is used to initialize or update a "handle" field with
  * information from the server.
  */
-export type HandleFieldPayload = $Exact<{
+export type HandleFieldPayload = {|
   // The arguments that were fetched.
-  args: Variables,
+  +args: Variables,
   // The __id of the record containing the source/handle field.
-  dataID: DataID,
+  +dataID: DataID,
   // The (storage) key at which the original server data was written.
-  fieldKey: string,
+  +fieldKey: string,
   // The name of the handle.
-  handle: string,
+  +handle: string,
   // The (storage) key at which the handle's data should be written by the
   // handler.
-  handleKey: string,
-}>;
+  +handleKey: string,
+|};
+
+/**
+ * A payload that represents data necessary to process the results of a `@match`
+ * directive:
+ * - data: The GraphQL response value for the @match field.
+ * - dataID: The ID of the store object linked to by the @match field.
+ * - operationReference: A reference to a generated module containing the
+ *   SplitOperation with which to normalize the field's `data`.
+ * - variables: Query variables.
+ * - typeName: the type that matched.
+ *
+ * The dataID, variables, and fragmentName can be used to create a Selector
+ * which can in turn be used to normalize and publish the data. The dataID and
+ * typeName can also be used to construct a root record for normalization.
+ */
+export type MatchFieldPayload = {|
+  +data: PayloadData,
+  +dataID: DataID,
+  +operationReference: mixed,
+  +path: $ReadOnlyArray<string>,
+  +typeName: string,
+  +variables: Variables,
+|};
+
+/**
+ * Data emitted after processing a Defer or Stream node during normalization
+ * that describes how to process the corresponding response chunk when it
+ * arrives.
+ */
+export type DeferPlaceholder = {|
+  +kind: 'defer',
+  +label: string,
+  +path: $ReadOnlyArray<string>,
+  +selector: NormalizationSelector,
+  +typeName: string,
+|};
+export type StreamPlaceholder = {|
+  +kind: 'stream',
+  +label: string,
+  +path: $ReadOnlyArray<string>,
+  +selector: NormalizationSelector,
+  +typeName: string,
+|};
+export type IncrementalDataPlaceholder = DeferPlaceholder | StreamPlaceholder;
+
+/**
+ * A user-supplied object to load a generated operation (SplitOperation) AST
+ * by a module reference. The exact format of a module reference is left to
+ * the application, but it must be a plain JavaScript value (string, number,
+ * or object/array of same).
+ */
+export type OperationLoader = {|
+  /**
+   * Synchronously load an operation, returning either the node or null if it
+   * cannot be resolved synchronously.
+   */
+  get(reference: mixed): ?NormalizationSplitOperation,
+
+  /**
+   * Asynchronously load an operation.
+   */
+  load(reference: mixed): Promise<?NormalizationSplitOperation>,
+|};
 
 /**
  * A function that receives a proxy over the store and may trigger side-effects
@@ -365,7 +468,7 @@ export type OptimisticUpdate =
     |}
   | {|
       selectorStoreUpdater: ?SelectorStoreUpdater,
-      operation: OperationSelector,
+      operation: OperationDescriptor,
       response: ?Object,
     |}
   | {|
@@ -381,36 +484,38 @@ export type MissingFieldHandler =
   | {
       kind: 'scalar',
       handle: (
-        field: ConcreteScalarField,
+        field: NormalizationScalarField,
         record: ?Record,
         args: Variables,
+        store: ReadOnlyRecordSourceProxy,
       ) => mixed,
     }
   | {
       kind: 'linked',
       handle: (
-        field: ConcreteLinkedField,
+        field: NormalizationLinkedField,
         record: ?Record,
         args: Variables,
+        store: ReadOnlyRecordSourceProxy,
       ) => ?DataID,
     }
   | {
       kind: 'pluralLinked',
       handle: (
-        field: ConcreteLinkedField,
+        field: NormalizationLinkedField,
         record: ?Record,
         args: Variables,
+        store: ReadOnlyRecordSourceProxy,
       ) => ?Array<?DataID>,
     };
 
 /**
- * The shape of data that is returned by normalizePayload for a given query.
+ * The results of normalizing a query.
  */
 export type RelayResponsePayload = {|
-  fieldPayloads?: ?Array<HandleFieldPayload>,
-  deferrableSelections?: ?DeferrableSelections,
+  incrementalPlaceholders: ?Array<IncrementalDataPlaceholder>,
+  fieldPayloads: ?Array<HandleFieldPayload>,
+  matchPayloads: ?Array<MatchFieldPayload>,
   source: MutableRecordSource,
   errors: ?Array<PayloadError>,
 |};
-
-export type DeferrableSelections = Set<string>;

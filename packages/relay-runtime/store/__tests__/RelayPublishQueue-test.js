@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,8 +12,8 @@
 
 const ErrorUtils = require('ErrorUtils');
 const RelayInMemoryRecordSource = require('../RelayInMemoryRecordSource');
-const RelayMarkSweepStore = require('../RelayMarkSweepStore');
 const RelayModernRecord = require('../RelayModernRecord');
+const RelayModernStore = require('../RelayModernStore');
 const RelayModernTestUtils = require('RelayModernTestUtils');
 const RelayPublishQueue = require('../RelayPublishQueue');
 const RelayStoreUtils = require('../RelayStoreUtils');
@@ -22,7 +22,9 @@ const getRelayHandleKey = require('../../util/getRelayHandleKey');
 const invariant = require('invariant');
 const simpleClone = require('../../util/simpleClone');
 
-const {createOperationSelector} = require('../RelayModernOperationSelector');
+const {
+  createOperationDescriptor,
+} = require('../RelayModernOperationDescriptor');
 
 const {ID_KEY, REF_KEY, ROOT_ID, ROOT_TYPE, TYPENAME_KEY} = RelayStoreUtils;
 
@@ -41,7 +43,8 @@ describe('RelayPublishQueue', () => {
   });
 
   describe('applyUpdate()/revertUpdate()', () => {
-    let operationSelector;
+    let operationDescriptor;
+    let operationDescriptorAliased;
     let initialData;
     let sourceData;
     let source;
@@ -84,7 +87,7 @@ describe('RelayPublishQueue', () => {
       };
       sourceData = simpleClone(initialData);
       source = new RelayInMemoryRecordSource(sourceData);
-      store = new RelayMarkSweepStore(source);
+      store = new RelayModernStore(source);
       const mutationQuery = generateAndCompile(
         `
         mutation ChangeNameMutation(
@@ -98,13 +101,32 @@ describe('RelayPublishQueue', () => {
         }
       `,
       ).ChangeNameMutation;
+
+      const mutationQueryAliased = generateAndCompile(
+        `
+        mutation ChangeNameMutation(
+          $input: ActorNameChangeInput!
+        ) {
+          changeName: actorNameChange(input: $input) {
+            actor {
+              name
+            }
+          }
+        }
+      `,
+      ).ChangeNameMutation;
+
       const variables = {
         input: {
           clientMutationId: '0',
           newName: 'zuck',
         },
       };
-      operationSelector = createOperationSelector(mutationQuery, variables);
+      operationDescriptor = createOperationDescriptor(mutationQuery, variables);
+      operationDescriptorAliased = createOperationDescriptor(
+        mutationQueryAliased,
+        variables,
+      );
     });
 
     it('runs an `storeUpdater` and applies the changes to the store', () => {
@@ -130,9 +152,29 @@ describe('RelayPublishQueue', () => {
     it('runs an `selectorStoreUpdater` and applies the changes to the store', () => {
       const queue = new RelayPublishQueue(store);
       const optimisticUpdate = {
-        operation: operationSelector,
+        operation: operationDescriptor,
         response: {
           actorNameChange: {
+            actor: {
+              id: '4',
+              name: 'zuck',
+              __typename: 'Actor',
+            },
+          },
+        },
+      };
+      queue.applyUpdate(optimisticUpdate);
+      expect(sourceData).toEqual(initialData);
+      queue.run();
+      expect(sourceData['4'].name).toEqual('zuck');
+    });
+
+    it('handles aliases correctly when used with optimistic update', () => {
+      const queue = new RelayPublishQueue(store);
+      const optimisticUpdate = {
+        operation: operationDescriptorAliased,
+        response: {
+          changeName: {
             actor: {
               id: '4',
               name: 'zuck',
@@ -165,7 +207,7 @@ describe('RelayPublishQueue', () => {
     it('unpublishes changes from `selectorStoreUpdater` when reverted in the same run()', () => {
       const queue = new RelayPublishQueue(store);
       const optimisticUpdate = {
-        operation: operationSelector,
+        operation: operationDescriptor,
         response: {
           actorNameChange: {
             actor: {
@@ -202,7 +244,7 @@ describe('RelayPublishQueue', () => {
     it('unpublishes changes from `selectorStoreUpdater` when reverted in a subsequent run()', () => {
       const queue = new RelayPublishQueue(store);
       const optimisticUpdate = {
-        operation: operationSelector,
+        operation: operationDescriptor,
         response: {
           actorNameChange: {
             actor: {
@@ -224,7 +266,7 @@ describe('RelayPublishQueue', () => {
     it('applies multiple updaters in the same run()', () => {
       const queue = new RelayPublishQueue(store);
       queue.applyUpdate({
-        operation: operationSelector,
+        operation: operationDescriptor,
         response: {
           actorNameChange: {
             actor: {
@@ -249,7 +291,7 @@ describe('RelayPublishQueue', () => {
     it('applies multiple updaters in subsequent run()s', () => {
       const queue = new RelayPublishQueue(store);
       queue.applyUpdate({
-        operation: operationSelector,
+        operation: operationDescriptor,
         response: {
           actorNameChange: {
             actor: {
@@ -274,7 +316,7 @@ describe('RelayPublishQueue', () => {
     it('rebases changes when an earlier change is reverted', () => {
       const queue = new RelayPublishQueue(store);
       const optimisticUpdate = {
-        operation: operationSelector,
+        operation: operationDescriptor,
         response: {
           actorNameChange: {
             actor: {
@@ -391,7 +433,7 @@ describe('RelayPublishQueue', () => {
       };
       sourceData = simpleClone(initialData);
       source = new RelayInMemoryRecordSource(sourceData);
-      store = new RelayMarkSweepStore(source);
+      store = new RelayModernStore(source);
     });
 
     it('reverts executed changes', () => {
@@ -552,7 +594,7 @@ describe('RelayPublishQueue', () => {
       `,
       );
 
-      queue.commitPayload(createOperationSelector(ActorQuery, {}), {
+      queue.commitPayload(createOperationDescriptor(ActorQuery, {}), {
         source: publishSource,
       });
       expect(notify).not.toBeCalled();
@@ -576,9 +618,14 @@ describe('RelayPublishQueue', () => {
       const queue = new RelayPublishQueue(store);
       const {ActorQuery} = generateAndCompile(
         `
+        fragment UserFragment on User {
+          username
+        }
+
         query ActorQuery {
           me {
             name
+            ...UserFragment
           }
           nodes(ids: ["4"]) {
             name
@@ -587,18 +634,27 @@ describe('RelayPublishQueue', () => {
       `,
       );
 
+      const operation = createOperationDescriptor(ActorQuery, {});
       const updater = jest.fn((storeProxy, data) => {
         const zuck = storeProxy.getRootField('me');
         const nodes = storeProxy.getPluralRootField('nodes');
         expect(nodes.length).toBe(1);
         expect(nodes[0]).toBe(zuck);
 
-        expect(data).toEqual({me: {name: 'Zuck'}, nodes: [{name: 'Zuck'}]});
+        expect(data).toEqual({
+          me: {
+            __id: '4',
+            __fragments: {UserFragment: {}},
+            __fragmentOwner: operation,
+            name: 'Zuck',
+          },
+          nodes: [{name: 'Zuck'}],
+        });
 
         zuck.setValue(zuck.getValue('name').toUpperCase(), 'name');
       });
       queue.commitPayload(
-        createOperationSelector(ActorQuery, {}),
+        operation,
         {
           source: new RelayInMemoryRecordSource({
             '4': {
@@ -606,6 +662,7 @@ describe('RelayPublishQueue', () => {
               __typename: 'User',
               id: '4',
               name: 'Zuck',
+              username: 'zuck',
             },
             'client:root': {
               __id: 'client:root',
@@ -630,6 +687,7 @@ describe('RelayPublishQueue', () => {
           __typename: 'User',
           id: '4',
           name: 'ZUCK',
+          username: 'zuck',
         },
         'client:root': {
           __id: 'client:root',
@@ -690,7 +748,7 @@ describe('RelayPublishQueue', () => {
       `,
       );
 
-      queue.commitPayload(createOperationSelector(ActorQuery, {}), {
+      queue.commitPayload(createOperationDescriptor(ActorQuery, {}), {
         fieldPayloads: [
           {
             dataID: '4',
@@ -792,7 +850,7 @@ describe('RelayPublishQueue', () => {
       };
       const initialData = simpleClone(sourceData);
       const source = new RelayInMemoryRecordSource(sourceData);
-      const store = new RelayMarkSweepStore(source);
+      const store = new RelayModernStore(source);
       const queue = new RelayPublishQueue(store);
       // Set name to 'MARK' *without* running the update
       queue.applyUpdate({
@@ -811,7 +869,7 @@ describe('RelayPublishQueue', () => {
       `,
       );
       // Query payload sets name to 'zuck'
-      queue.commitPayload(createOperationSelector(NameQuery, {id: '4'}), {
+      queue.commitPayload(createOperationDescriptor(NameQuery, {id: '4'}), {
         source: new RelayInMemoryRecordSource({
           [ROOT_ID]: {
             [ID_KEY]: ROOT_ID,
@@ -819,9 +877,9 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
-            __id: '4',
+            [ID_KEY]: '4',
+            [TYPENAME_KEY]: 'User',
             id: '4',
-            __typename: 'User',
             name: 'zuck',
           },
         }),
@@ -852,7 +910,7 @@ describe('RelayPublishQueue', () => {
       };
       const initialData = simpleClone(sourceData);
       const source = new RelayInMemoryRecordSource(sourceData);
-      const store = new RelayMarkSweepStore(source);
+      const store = new RelayModernStore(source);
       const queue = new RelayPublishQueue(store);
       const optimisticUpdate = {
         storeUpdater: storeProxy => {
@@ -873,26 +931,25 @@ describe('RelayPublishQueue', () => {
         }
       `,
       );
-      queue.commitPayload(
-        createOperationSelector(NameQuery, {id: '4'}),
-        {
-          source: new RelayInMemoryRecordSource({
-            [ROOT_ID]: {
-              [ID_KEY]: ROOT_ID,
-              [TYPENAME_KEY]: ROOT_TYPE,
-              me: {[REF_KEY]: '4'},
-            },
-            4: {
-              ...initialData['4'],
-              id: '4',
-              name: 'zuck',
-            },
-          }),
-        },
-        undefined,
-        // alert the publish queue that this commit reverts
-        // the corresponding optimistic update
-        optimisticUpdate,
+      queue.commitPayload(createOperationDescriptor(NameQuery, {id: '4'}), {
+        source: new RelayInMemoryRecordSource({
+          [ROOT_ID]: {
+            [ID_KEY]: ROOT_ID,
+            [TYPENAME_KEY]: ROOT_TYPE,
+            me: {[REF_KEY]: '4'},
+          },
+          4: {
+            [ID_KEY]: '4',
+            [TYPENAME_KEY]: 'User',
+            id: '4',
+            name: 'zuck',
+          },
+        }),
+      },
+      undefined,
+      // alert the publish queue that this commit reverts
+      // the corresponding optimistic update
+      optimisticUpdate,
       );
       queue.run();
       // Optimistic update should rebase, capitalizing the new name
@@ -920,7 +977,7 @@ describe('RelayPublishQueue', () => {
       };
       const initialData = simpleClone(sourceData);
       const source = new RelayInMemoryRecordSource(sourceData);
-      const store = new RelayMarkSweepStore(source);
+      const store = new RelayModernStore(source);
       const queue = new RelayPublishQueue(store);
       // Set name to 'MARK'
       const mutation = {
@@ -940,7 +997,7 @@ describe('RelayPublishQueue', () => {
       `,
       );
       // Query payload sets name to 'zuck'
-      queue.commitPayload(createOperationSelector(NameQuery, {id: '4'}), {
+      queue.commitPayload(createOperationDescriptor(NameQuery, {id: '4'}), {
         source: new RelayInMemoryRecordSource({
           [ROOT_ID]: {
             [ID_KEY]: ROOT_ID,
@@ -948,7 +1005,8 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
-            ...initialData['4'],
+            [ID_KEY]: '4',
+            [TYPENAME_KEY]: 'User',
             id: '4',
             name: 'zuck',
           },
@@ -981,7 +1039,7 @@ describe('RelayPublishQueue', () => {
         },
       };
       const source = new RelayInMemoryRecordSource(sourceData);
-      const store = new RelayMarkSweepStore(source);
+      const store = new RelayModernStore(source);
       const queue = new RelayPublishQueue(store);
 
       const increaseVolumeUpdater = {
@@ -1028,7 +1086,7 @@ describe('RelayPublishQueue', () => {
       };
       const initialData = simpleClone(sourceData);
       const source = new RelayInMemoryRecordSource(sourceData);
-      const store = new RelayMarkSweepStore(source);
+      const store = new RelayModernStore(source);
       const queue = new RelayPublishQueue(store);
       const buggyUpdater = storeProxy => {
         invariant(false, 'buggy updater throwing error');
@@ -1048,7 +1106,7 @@ describe('RelayPublishQueue', () => {
       `,
       );
       // Query payload sets name to 'zuck'
-      queue.commitPayload(createOperationSelector(NameQuery, {id: '4'}), {
+      queue.commitPayload(createOperationDescriptor(NameQuery, {id: '4'}), {
         source: new RelayInMemoryRecordSource({
           [ROOT_ID]: {
             [ID_KEY]: ROOT_ID,
@@ -1056,9 +1114,9 @@ describe('RelayPublishQueue', () => {
             me: {[REF_KEY]: '4'},
           },
           4: {
-            __id: '4',
+            [ID_KEY]: '4',
+            [TYPENAME_KEY]: 'User',
             id: '4',
-            __typename: 'User',
             name: 'zuck',
           },
         }),
@@ -1114,7 +1172,7 @@ describe('RelayPublishQueue', () => {
       let namePayload, nameSelector, nameSource, sourceData, queue;
       beforeEach(() => {
         sourceData = {};
-        const store = new RelayMarkSweepStore(
+        const store = new RelayModernStore(
           new RelayInMemoryRecordSource(sourceData),
         );
         queue = new RelayPublishQueue(store);
@@ -1127,7 +1185,7 @@ describe('RelayPublishQueue', () => {
           }
         `,
         );
-        nameSelector = createOperationSelector(nameQuery, {id: '4'});
+        nameSelector = createOperationDescriptor(nameQuery, {id: '4'});
         namePayload = {
           source: new RelayInMemoryRecordSource({
             [ROOT_ID]: {
@@ -1201,7 +1259,7 @@ describe('RelayPublishQueue', () => {
       };
       const initialData = simpleClone(sourceData);
       const storeSource = new RelayInMemoryRecordSource(sourceData);
-      const store = new RelayMarkSweepStore(storeSource);
+      const store = new RelayModernStore(storeSource);
       const queue = new RelayPublishQueue(store);
       // Set name to 'MARK', running the update immediately
       queue.applyUpdate({
@@ -1214,7 +1272,8 @@ describe('RelayPublishQueue', () => {
       queue.commitSource(
         new RelayInMemoryRecordSource({
           4: {
-            ...initialData['4'],
+            [ID_KEY]: '4',
+            [TYPENAME_KEY]: 'User',
             id: '4',
             name: 'zuck',
           },
@@ -1241,7 +1300,7 @@ describe('RelayPublishQueue', () => {
       };
       const initialData = simpleClone(sourceData);
       const storeSource = new RelayInMemoryRecordSource(sourceData);
-      const store = new RelayMarkSweepStore(storeSource);
+      const store = new RelayModernStore(storeSource);
       const queue = new RelayPublishQueue(store);
       // Set name to 'MARK'
       const mutation = {
@@ -1254,7 +1313,8 @@ describe('RelayPublishQueue', () => {
       queue.commitSource(
         new RelayInMemoryRecordSource({
           4: {
-            ...initialData['4'],
+            [ID_KEY]: '4',
+            [TYPENAME_KEY]: 'User',
             id: '4',
             name: 'zuck',
           },
@@ -1391,7 +1451,7 @@ describe('RelayPublishQueue', () => {
       `,
       );
       // Query payload sets name to 'zuck'
-      queue.commitPayload(createOperationSelector(NameQuery, {id: '4'}), {
+      queue.commitPayload(createOperationDescriptor(NameQuery, {id: '4'}), {
         source: new RelayInMemoryRecordSource({
           4: {
             __id: '4',
@@ -1442,7 +1502,7 @@ describe('RelayPublishQueue', () => {
       expect(holdGC).not.toBeCalled();
     });
 
-    it('should dispose gc hold, when there are no optimistic updates are in the queue', () => {
+    it('should dispose gc hold, when there are no optimistic updates in the queue', () => {
       const disposeGC = jest.fn();
       const holdGC = jest.fn(() => ({
         dispose: disposeGC,
@@ -1465,6 +1525,11 @@ describe('RelayPublishQueue', () => {
       expect(holdGC).toBeCalled();
       expect(disposeGC).not.toBeCalled();
       queue.run();
+      expect(disposeGC).not.toBeCalled(); // Exactly! We should not dispose GC on each run
+      // Let's revert all updates
+      queue.revertAll();
+      queue.run();
+      // Now, it's time to release GC
       expect(disposeGC).toBeCalled();
     });
   });

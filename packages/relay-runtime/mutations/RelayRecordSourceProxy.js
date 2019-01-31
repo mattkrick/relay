@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -27,7 +27,7 @@ import type {
   RecordProxy,
   RecordSourceProxy,
   RecordSourceSelectorProxy,
-  OperationSelector,
+  OperationDescriptor,
 } from '../store/RelayStoreTypes';
 import type {DataID} from '../util/RelayRuntimeTypes';
 import type RelayRecordSourceMutator from './RelayRecordSourceMutator';
@@ -87,7 +87,7 @@ class RelayRecordSourceProxy implements RecordSourceProxy {
   }
 
   commitPayload(
-    operation: OperationSelector,
+    operation: OperationDescriptor,
     response: ?Object,
   ): RecordSourceSelectorProxy {
     if (!response) {

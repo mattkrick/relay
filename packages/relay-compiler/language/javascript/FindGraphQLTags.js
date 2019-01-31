@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,10 +10,10 @@
 
 'use strict';
 
+const Profiler = require('../../core/GraphQLCompilerProfiler');
+
 const babylon = require('@babel/parser');
 const util = require('util');
-
-const {Profiler} = require('graphql-compiler');
 
 import type {GraphQLTag} from '../RelayLanguagePluginInterface';
 
@@ -27,7 +27,7 @@ const BABYLON_OPTIONS = {
     // Previously "*"
     'asyncGenerators',
     'classProperties',
-    'decorators',
+    ['decorators', {decoratorsBeforeExport: true}],
     'doExpressions',
     'dynamicImport',
     'exportExtensions',

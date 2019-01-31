@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,16 +11,18 @@
 'use strict';
 
 const RelayConcreteNode = require('./util/RelayConcreteNode');
+const RelayConcreteVariables = require('./store/RelayConcreteVariables');
 const RelayConnectionHandler = require('./handlers/connection/RelayConnectionHandler');
 const RelayConnectionInterface = require('./handlers/connection/RelayConnectionInterface');
 const RelayCore = require('./store/RelayCore');
 const RelayDeclarativeMutationConfig = require('./mutations/RelayDeclarativeMutationConfig');
 const RelayDefaultHandleKey = require('./util/RelayDefaultHandleKey');
+const RelayDefaultHandlerProvider = require('./handlers/RelayDefaultHandlerProvider');
 const RelayError = require('./util/RelayError');
 const RelayInMemoryRecordSource = require('./store/RelayInMemoryRecordSource');
-const RelayMarkSweepStore = require('./store/RelayMarkSweepStore');
 const RelayModernEnvironment = require('./store/RelayModernEnvironment');
 const RelayModernGraphQLTag = require('./query/RelayModernGraphQLTag');
+const RelayModernStore = require('./store/RelayModernStore');
 const RelayNetwork = require('./network/RelayNetwork');
 const RelayNetworkLoggerTransaction = require('./network/RelayNetworkLoggerTransaction');
 const RelayObservable = require('./network/RelayObservable');
@@ -63,11 +65,15 @@ export type {
 export type {MutationConfig} from './mutations/commitRelayModernMutation';
 export type {RelayNetworkLog} from './network/RelayNetworkLoggerTransaction';
 export type {
-  EventPayload,
-  ExecutePayload,
+  ExecuteFunction,
+  FetchFunction,
   GraphQLResponse,
+  LegacyObserver,
+  Network as INetwork,
+  PayloadData,
   PayloadError,
-  StreamPayload,
+  SubscribeFunction,
+  Uploadable,
   UploadableMap,
 } from './network/RelayNetworkTypes';
 export type {
@@ -81,14 +87,24 @@ export type {GraphQLTaggedNode} from './query/RelayModernGraphQLTag';
 export type {RecordState} from './store/RelayRecordState';
 export type {
   Environment as IEnvironment,
+  FragmentPointer,
   FragmentMap,
   FragmentReference,
-  OperationSelector,
+  FragmentSpecResolver,
+  HandleFieldPayload,
+  MatchPointer,
+  MissingFieldHandler,
+  OperationLoader,
+  OperationDescriptor,
+  OptimisticUpdate,
+  OwnedReaderSelector,
   RecordProxy,
   RecordSourceProxy,
   RecordSourceSelectorProxy,
   RelayContext,
-  Selector,
+  ReaderSelector,
+  NormalizationSelector,
+  SelectorData,
   SelectorStoreUpdater,
   Snapshot,
   StoreUpdater,
@@ -97,25 +113,54 @@ export type {
   GraphQLSubscriptionConfig,
 } from './subscription/requestRelaySubscription';
 export type {
-  ArgumentDependency,
-  ConcreteArgument,
-  ConcreteArgumentDefinition,
-  ConcreteBatchRequest,
-  ConcreteField,
-  ConcreteFragment,
-  ConcreteLinkedField,
-  ConcreteOperation,
+  NormalizationArgument,
+  NormalizationArgumentDefinition,
+  NormalizationDefer,
+  NormalizationField,
+  NormalizationLinkedField,
+  NormalizationMatchField,
+  NormalizationScalarField,
+  NormalizationSelection,
+  NormalizationSplitOperation,
+  NormalizationStream,
+} from './util/NormalizationNode';
+export type {NormalizationOperation} from './util/NormalizationNode';
+export type {
+  ReaderArgument,
+  ReaderArgumentDefinition,
+  ReaderField,
+  ReaderFragment,
+  ReaderLinkedField,
+  ReaderMatchField,
+  ReaderPaginationMetadata,
+  ReaderRefetchableFragment,
+  ReaderScalarField,
+  ReaderSelection,
+  ReaderSplitOperation,
+} from './util/ReaderNode';
+export type {
+  CEnvironment,
+  CFragmentMap,
+  CNormalizationSelector,
+  COperationDescriptor,
+  CReaderSelector,
+  CRelayContext,
+  CSnapshot,
+  CUnstableEnvironmentCore,
+  CFragmentSpecResolver,
+  FragmentSpecResults,
+  Props,
+} from './util/RelayCombinedEnvironmentTypes';
+export type {
   ConcreteRequest,
-  ConcreteScalarField,
-  ConcreteSelection,
   GeneratedNode,
-  RequestNode,
+  RequestParameters,
 } from './util/RelayConcreteNode';
 export type {
   CacheConfig,
   DataID,
   Disposable,
-  RerunParam,
+  OperationType,
   Variables,
 } from './util/RelayRuntimeTypes';
 
@@ -145,21 +190,16 @@ module.exports = {
   Observable: RelayObservable,
   QueryResponseCache: RelayQueryResponseCache,
   RecordSource: RelayInMemoryRecordSource,
-  Store: RelayMarkSweepStore,
+  Store: RelayModernStore,
 
   areEqualSelectors: RelayCore.areEqualSelectors,
   createFragmentSpecResolver: RelayCore.createFragmentSpecResolver,
-  createOperationSelector: RelayCore.createOperationSelector,
+  createOperationDescriptor: RelayCore.createOperationDescriptor,
   getDataIDsFromObject: RelayCore.getDataIDsFromObject,
   getFragment: RelayModernGraphQLTag.getFragment,
+  getPaginationFragment: RelayModernGraphQLTag.getPaginationFragment,
+  getRefetchableFragment: RelayModernGraphQLTag.getRefetchableFragment,
   getRequest: RelayModernGraphQLTag.getRequest,
-  // TODO (T23201154) remove in a future Relay release.
-  getOperation: function() {
-    if (__DEV__) {
-      require('warning')(false, 'getOperation() deprecated. Use getRequest().');
-    }
-    return RelayModernGraphQLTag.getRequest.apply(null, arguments);
-  },
   getSelector: RelayCore.getSelector,
   getSelectorList: RelayCore.getSelectorList,
   getSelectorsFromObject: RelayCore.getSelectorsFromObject,
@@ -172,6 +212,7 @@ module.exports = {
   RangeOperations: RelayDeclarativeMutationConfig.RangeOperations,
 
   // Extensions
+  DefaultHandlerProvider: RelayDefaultHandlerProvider,
   ConnectionHandler: RelayConnectionHandler,
   ViewerHandler: RelayViewerHandler,
 
@@ -194,7 +235,13 @@ module.exports = {
   RelayError: RelayError,
   RelayNetworkLoggerTransaction: RelayNetworkLoggerTransaction,
   DEFAULT_HANDLE_KEY: RelayDefaultHandleKey.DEFAULT_HANDLE_KEY,
+  FRAGMENTS_KEY: RelayStoreUtils.FRAGMENTS_KEY,
+  FRAGMENT_OWNER_KEY: RelayStoreUtils.FRAGMENT_OWNER_KEY,
+  ID_KEY: RelayStoreUtils.ID_KEY,
+  REF_KEY: RelayStoreUtils.REF_KEY,
+  REFS_KEY: RelayStoreUtils.REFS_KEY,
   ROOT_ID: RelayStoreUtils.ROOT_ID,
+  ROOT_TYPE: RelayStoreUtils.ROOT_TYPE,
 
   createRelayNetworkLogger: createRelayNetworkLogger,
   deepFreeze: deepFreeze,
@@ -204,4 +251,7 @@ module.exports = {
   recycleNodesInto: recycleNodesInto,
   simpleClone: simpleClone,
   stableCopy: stableCopy,
+  __internal: {
+    getModernOperationVariables: RelayConcreteVariables.getOperationVariables,
+  },
 };

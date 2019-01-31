@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -13,7 +13,9 @@
 const RelayModernFragmentSpecResolver = require('../RelayModernFragmentSpecResolver');
 const RelayModernTestUtils = require('RelayModernTestUtils');
 
-const {createOperationSelector} = require('../RelayModernOperationSelector');
+const {
+  createOperationDescriptor,
+} = require('../RelayModernOperationDescriptor');
 const {ROOT_ID} = require('../RelayStoreUtils');
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
 
@@ -54,8 +56,7 @@ describe('RelayModernFragmentSpecResolver', () => {
     expect.extend(RelayModernTestUtils.matchers);
 
     environment = createMockEnvironment();
-    ({UserFragment, UserQuery, UsersFragment} = environment.mock.compile(
-      `
+    ({UserFragment, UserQuery, UsersFragment} = environment.mock.compile(`
       query UserQuery($id: ID! $size: Int $fetchSize: Boolean!) {
         node(id: $id) {
           ...UserFragment
@@ -76,10 +77,9 @@ describe('RelayModernFragmentSpecResolver', () => {
           uri
         }
       }
-    `,
-    ));
+    `));
     environment.commitPayload(
-      createOperationSelector(UserQuery, {
+      createOperationDescriptor(UserQuery, {
         fetchSize: false,
         id: '4',
         size: null,
@@ -93,7 +93,7 @@ describe('RelayModernFragmentSpecResolver', () => {
       },
     );
     environment.commitPayload(
-      createOperationSelector(UserQuery, {
+      createOperationDescriptor(UserQuery, {
         fetchSize: false,
         id: 'beast',
         size: null,

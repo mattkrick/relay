@@ -21,23 +21,24 @@ const invariant = require('invariant');
 const normalizeRelayPayload = require('./normalizeRelayPayload');
 
 import type {HandlerProvider} from '../handlers/RelayDefaultHandlerProvider';
+import type {SelectorData} from '../util/RelayCombinedEnvironmentTypes';
 import type {Disposable} from '../util/RelayRuntimeTypes';
 import type {
   HandleFieldPayload,
   MutableRecordSource,
-  OperationSelector,
+  OperationDescriptor,
   OptimisticUpdate,
   RecordSource,
   RelayResponsePayload,
+  ReaderSelector,
   SelectorStoreUpdater,
   Store,
   StoreUpdater,
 } from './RelayStoreTypes';
-import type {SelectorData} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
 
 type Payload = {
   fieldPayloads: ?Array<HandleFieldPayload>,
-  operation: OperationSelector,
+  operation: OperationDescriptor | null,
   source: MutableRecordSource,
   updater: ?SelectorStoreUpdater,
 };
@@ -136,7 +137,7 @@ class RelayPublishQueue {
    * If provided, this will revert the corresponding optimistic update
    */
   commitPayload(
-    operation: OperationSelector,
+    operation: OperationDescriptor,
     {fieldPayloads, source}: RelayResponsePayload,
     updater?: ?SelectorStoreUpdater,
     optimisticUpdate?: OptimisticUpdate,
@@ -154,6 +155,14 @@ class RelayPublishQueue {
       }
     }
     this._pendingUpdates.push(serverData);
+  }
+
+  commitRelayPayload({fieldPayloads, source}: RelayResponsePayload): void {
+    this._pendingBackupRebase = true;
+    this._pendingUpdates.push({
+      kind: 'payload',
+      payload: {fieldPayloads, operation: null, source, updater: null},
+    });
   }
 
   /**
@@ -199,10 +208,12 @@ class RelayPublishQueue {
     if (this._currentStoreIdx < this._pendingUpdates.length) {
       const updates = this._pendingUpdates.slice(this._currentStoreIdx);
       this._handleUpdates(updates);
-      this._gcHold = this._store.holdGC();
-    } else if (this._gcHold) {
-      this._gcHold.dispose();
-      this._gcHold = null;
+      if (!this._gcHold) {
+        this._gcHold = this._store.holdGC();
+      }
+    } else if (this._gcHold && this._pendingUpdates.length === 0) {
+        this._gcHold.dispose();
+        this._gcHold = null;
     }
   }
 
@@ -267,7 +278,7 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
       );
       store.publishSource(source, fieldPayloads);
       if (selectorStoreUpdater) {
-        const selectorData = lookupSelector(source, operation.fragment);
+        const selectorData = lookupSelector(source, operation.fragment, operation);
         const selectorStore = new RelayRecordSourceSelectorProxy(
           store,
           operation.fragment,
@@ -311,12 +322,17 @@ function applyOptimisticUpdate(optimisticUpdate, store) {
 function applyServerPayloadUpdate(payload: Payload, store): void {
   const {fieldPayloads, operation, source, updater} = payload;
   store.publishSource(source, fieldPayloads);
-  const selectorStore = new RelayRecordSourceSelectorProxy(
-    store,
-    operation.fragment,
-  );
   if (updater) {
-    const selectorData = lookupSelector(source, operation.fragment);
+    const selector = operation?.fragment;
+    invariant(
+      selector != null,
+      'RelayModernEnvironment: Expected a selector to be provided with updater function.',
+    );
+    const selectorData = lookupSelector(source, selector, operation);
+    const selectorStore = new RelayRecordSourceSelectorProxy(
+      store,
+      selector,
+    );
     updater(selectorStore, selectorData);
   }
 }
@@ -329,8 +345,8 @@ function findUpdaterIdx(
   return updates.findIndex(update => update.updater === updater);
 }
 
-function lookupSelector(source, selector): ?SelectorData {
-  const selectorData = RelayReader.read(source, selector).data;
+function lookupSelector(source: RecordSource, selector: ReaderSelector, owner: ?OperationDescriptor): ?SelectorData {
+  const selectorData = RelayReader.read(source, selector, owner).data;
   if (__DEV__) {
     const deepFreeze = require('../util/deepFreeze');
     if (selectorData) {

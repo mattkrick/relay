@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,11 +10,17 @@
 
 'use strict';
 
+const RelayInMemoryRecordSource = require('../../store/RelayInMemoryRecordSource');
+const RelayModernEnvironment = require('../../store/RelayModernEnvironment');
+const RelayModernStore = require('../../store/RelayModernStore');
+const RelayNetwork = require('../../network/RelayNetwork');
+const RelayObservable = require('../../network/RelayObservable');
+
 const commitRelayModernMutation = require('../commitRelayModernMutation');
 
 const {
-  createOperationSelector,
-} = require('../../store/RelayModernOperationSelector');
+  createOperationDescriptor,
+} = require('../../store/RelayModernOperationDescriptor');
 const {ROOT_ID} = require('../../store/RelayStoreUtils');
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
 const {generateAndCompile} = require('RelayModernTestUtils');
@@ -114,8 +120,11 @@ describe('Configs: NODE_DELETE', () => {
       variables: {},
     });
     const callback = jest.fn();
-    const operationSelector = createOperationSelector(FeedbackCommentQuery, {});
-    environment.commitPayload(operationSelector, payload);
+    const operationDescriptor = createOperationDescriptor(
+      FeedbackCommentQuery,
+      {},
+    );
+    environment.commitPayload(operationDescriptor, payload);
     store.subscribe(snapshot, callback);
     commitRelayModernMutation(environment, {
       configs,
@@ -147,7 +156,7 @@ describe('Configs: NODE_DELETE', () => {
     expect(callback.mock.calls.length).toBe(0);
   });
   it('throws error with classic environment', () => {
-    const RelayEnvironment = require.requireActual(
+    const RelayEnvironment = jest.requireActual(
       'react-relay/classic/store/__mocks__/RelayEnvironment',
     );
     const environment = new RelayEnvironment();
@@ -285,8 +294,11 @@ describe('Configs: RANGE_DELETE', () => {
         },
       },
     };
-    const operationSelector = createOperationSelector(FeedbackCommentQuery, {});
-    environment.commitPayload(operationSelector, payload);
+    const operationDescriptor = createOperationDescriptor(
+      FeedbackCommentQuery,
+      {},
+    );
+    environment.commitPayload(operationDescriptor, payload);
     const optimisticUpdater = jest.fn();
     const updater = jest.fn();
     const snapshot = store.lookup({
@@ -402,8 +414,8 @@ describe('Configs: RANGE_DELETE', () => {
         },
       },
     };
-    const operationSelector = createOperationSelector(FriendQuery, {});
-    environment.commitPayload(operationSelector, payload);
+    const operationDescriptor = createOperationDescriptor(FriendQuery, {});
+    environment.commitPayload(operationDescriptor, payload);
     const optimisticResponse = {
       unfriend: {
         clientMutationId: '0',
@@ -522,7 +534,7 @@ describe('Configs: RANGE_ADD', () => {
         node(id:"feedback123") {
           ...on Feedback {
             topLevelComments(first: 1) @connection(
-              key: Feedback_topLevelComments
+              key: "Feedback_topLevelComments"
             ) {
               edges {
                 node {
@@ -590,8 +602,8 @@ describe('Configs: RANGE_ADD', () => {
       node: CommentQuery.fragment,
       variables: {},
     });
-    const operationSelector = createOperationSelector(CommentQuery, {});
-    environment.commitPayload(operationSelector, payload);
+    const operationDescriptor = createOperationDescriptor(CommentQuery, {});
+    environment.commitPayload(operationDescriptor, payload);
     store.subscribe(snapshot, callback);
     commitMutation(environment, {
       configs,
@@ -629,8 +641,8 @@ describe('Configs: RANGE_ADD', () => {
       },
     ];
     // prepare existing data
-    const operationSelector = createOperationSelector(CommentQuery, {});
-    environment.commitPayload(operationSelector, {
+    const operationDescriptor = createOperationDescriptor(CommentQuery, {});
+    environment.commitPayload(operationDescriptor, {
       node: {
         id: feedbackID,
         __typename: 'Feedback',
@@ -800,8 +812,8 @@ describe('Configs: RANGE_ADD', () => {
       node: CommentQuery.fragment,
       variables: {},
     });
-    const operationSelector = createOperationSelector(CommentQuery, {});
-    environment.commitPayload(operationSelector, payload);
+    const operationDescriptor = createOperationDescriptor(CommentQuery, {});
+    environment.commitPayload(operationDescriptor, payload);
     store.subscribe(snapshot, callback);
     commitMutation(environment, {
       configs,
@@ -843,8 +855,8 @@ describe('Configs: RANGE_ADD', () => {
       query CommentQuery {
         node(id:"feedback123") {
           ...on Feedback {
-            topLevelComments(orderBy: "chronological", first: 1) @connection(
-              key: Feedback_topLevelComments
+            topLevelComments(orderBy: chronological, first: 1) @connection(
+              key: "Feedback_topLevelComments"
             ) {
               count
               edges {
@@ -856,8 +868,8 @@ describe('Configs: RANGE_ADD', () => {
           }
         }
       }`));
-    const operationSelector = createOperationSelector(CommentQuery, {});
-    environment.commitPayload(operationSelector, payload);
+    const operationDescriptor = createOperationDescriptor(CommentQuery, {});
+    environment.commitPayload(operationDescriptor, payload);
     const snapshot = store.lookup({
       dataID: ROOT_ID,
       node: CommentQuery.fragment,
@@ -882,5 +894,323 @@ describe('Configs: RANGE_ADD', () => {
     // Does not need to fire again since server data should be the same
     expect(updater).toBeCalled();
     expect(callback.mock.calls.length).toBe(0);
+  });
+});
+
+describe('Aliased mutation roots', () => {
+  beforeEach(() => jest.mock('warning'));
+  it('does not present a warning when mutation uses an aliased in combination with a optimistcResponse', () => {
+    const environment = createMockEnvironment();
+    const mutation = generateAndCompile(`
+      mutation CommentDeleteMutation(
+        $input: CommentDeleteInput
+      ) {
+        alias: commentDelete(input: $input) {
+          deletedCommentId
+          feedback {
+            id
+            topLevelComments {
+              count
+            }
+          }
+        }
+      }
+    `).CommentDeleteMutation;
+    commitMutation(environment, {
+      mutation,
+      variables: {},
+      optimisticResponse: {
+        alias: {
+          deletedCommentId: 'oo ahh zippy do wah',
+          feedback: {
+            id: 'the feedback id',
+            topLevelComments: {
+              count: '>9000',
+            },
+          },
+        },
+      },
+    });
+    expect(require('warning')).not.toHaveBeenCalledWith(
+      undefined,
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+});
+
+describe('commitMutation()', () => {
+  let callbacks;
+  let dataSource;
+  let environment;
+  let fragment;
+  let mutation;
+  let onCompleted;
+  let onError;
+  let variables;
+
+  beforeEach(() => {
+    ({
+      CreateCommentMutation: mutation,
+      CommentFragment: fragment,
+    } = generateAndCompile(`
+        mutation CreateCommentMutation($input: CommentCreateInput!) {
+          commentCreate(input: $input) {
+            comment {
+              id
+              body {
+                text
+              }
+            }
+          }
+        }
+        fragment CommentFragment on Comment {
+          id
+          body {
+            text
+          }
+        }
+      `));
+    variables = {
+      input: {
+        clientMutationId: '0',
+        feedbackId: '1',
+      },
+    };
+
+    onCompleted = jest.fn();
+    onError = jest.fn();
+    const fetch = (_query, _variables, _cacheConfig) => {
+      return RelayObservable.create(sink => {
+        dataSource = sink;
+      });
+    };
+    const source = new RelayInMemoryRecordSource({});
+    const store = new RelayModernStore(source);
+    environment = new RelayModernEnvironment({
+      network: RelayNetwork.create(fetch),
+      store,
+    });
+  });
+
+  it('publishes each payload to the store as it arrives', () => {
+    const initialSnapshot = environment.lookup({
+      dataID: '1',
+      node: fragment,
+      variables: {},
+    });
+    const callback = jest.fn();
+    environment.subscribe(initialSnapshot, callback);
+
+    commitMutation(environment, {
+      mutation,
+      variables,
+      onCompleted,
+      onError,
+    });
+    dataSource.next({
+      data: {
+        commentCreate: {
+          comment: {
+            id: '1',
+            body: {
+              text: 'Gave Relay',
+            },
+          },
+        },
+      },
+    });
+    expect(callback).toBeCalledTimes(1);
+    const snapshot = callback.mock.calls[0][0];
+    expect(snapshot.isMissingData).toBe(false);
+    expect(snapshot.data).toEqual({
+      id: '1',
+      body: {text: 'Gave Relay'},
+    });
+
+    dataSource.next({
+      data: {
+        commentCreate: {
+          comment: {
+            id: '1',
+            body: {
+              text: 'GAVE RELAY!!!!', // updated
+            },
+          },
+        },
+      },
+    });
+    expect(callback).toBeCalledTimes(2);
+    const nextSnapshot = callback.mock.calls[1][0];
+    expect(nextSnapshot.isMissingData).toBe(false);
+    expect(nextSnapshot.data).toEqual({
+      id: '1',
+      body: {text: 'GAVE RELAY!!!!'}, // updated text
+    });
+
+    expect(onCompleted).toBeCalledTimes(0);
+    expect(onError).toBeCalledTimes(0);
+  });
+
+  it('calls onCompleted when the mutation completes after one payload', () => {
+    commitMutation(environment, {
+      mutation,
+      variables,
+      onCompleted,
+      onError,
+    });
+    dataSource.next({
+      data: {
+        commentCreate: {
+          comment: {
+            id: '1',
+            body: {
+              text: 'Gave Relay',
+            },
+          },
+        },
+      },
+      errors: [
+        {
+          message: 'wtf',
+          locations: [],
+          severity: 'ERROR',
+        },
+      ],
+    });
+    expect(onCompleted).toBeCalledTimes(0);
+    dataSource.complete();
+
+    expect(onCompleted).toBeCalledTimes(1);
+    expect(onCompleted.mock.calls[0][0]).toEqual({
+      commentCreate: {
+        comment: {
+          id: '1',
+          body: {
+            text: 'Gave Relay',
+          },
+        },
+      },
+    });
+    expect(onCompleted.mock.calls[0][1]).toEqual([
+      {
+        message: 'wtf',
+        locations: [],
+        severity: 'ERROR',
+      },
+    ]);
+    expect(onError).toBeCalledTimes(0);
+  });
+
+  it('calls onCompleted with the latest data when the mutation completes after multiple payloads', () => {
+    commitMutation(environment, {
+      mutation,
+      variables,
+      onCompleted,
+      onError,
+    });
+    dataSource.next({
+      data: {
+        commentCreate: {
+          comment: {
+            id: '1',
+            body: {
+              text: 'Gave Relay', // overridden by later payload
+            },
+          },
+        },
+      },
+      errors: [
+        {
+          message: 'wtf',
+          locations: [],
+          severity: 'ERROR',
+        },
+      ],
+    });
+    dataSource.next({
+      data: {
+        commentCreate: {
+          comment: {
+            id: '1',
+            body: {
+              text: 'GAVE RELAY',
+            },
+          },
+        },
+      },
+      errors: [
+        {
+          message: 'wtf again!',
+          locations: [],
+          severity: 'ERROR',
+        },
+      ],
+    });
+    expect(onCompleted).toBeCalledTimes(0);
+    dataSource.complete();
+
+    expect(onCompleted).toBeCalledTimes(1);
+    expect(onCompleted.mock.calls[0][0]).toEqual({
+      commentCreate: {
+        comment: {
+          id: '1',
+          body: {
+            text: 'GAVE RELAY', // matches value in latest payload
+          },
+        },
+      },
+    });
+    expect(onCompleted.mock.calls[0][1]).toEqual([
+      {
+        message: 'wtf',
+        locations: [],
+        severity: 'ERROR',
+      },
+      {
+        message: 'wtf again!',
+        locations: [],
+        severity: 'ERROR',
+      },
+    ]);
+    expect(onError).toBeCalledTimes(0);
+  });
+
+  it('calls onError when the payload is mising data', () => {
+    commitMutation(environment, {
+      mutation,
+      variables,
+      onCompleted,
+      onError,
+    });
+    dataSource.next({
+      data: null, // error: missing data
+      errors: [
+        {
+          message: 'wtf',
+          locations: [],
+          severity: 'ERROR',
+        },
+      ],
+    });
+    expect(onCompleted).toBeCalledTimes(0);
+    expect(onError).toBeCalledTimes(1);
+    expect(onError.mock.calls[0][0].message).toContain(
+      'No data returned for operation `CreateCommentMutation`',
+    );
+  });
+
+  it('calls onError when the network errors', () => {
+    commitMutation(environment, {
+      mutation,
+      variables,
+      onCompleted,
+      onError,
+    });
+    const error = new Error('wtf');
+    dataSource.error(error);
+    expect(onCompleted).toBeCalledTimes(0);
+    expect(onError).toBeCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toBe(error);
   });
 });

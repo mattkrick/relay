@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,19 +10,23 @@
 
 'use strict';
 
+const CompilerContext = require('../core/GraphQLCompilerContext');
+const IRTransformer = require('../core/GraphQLIRTransformer');
+const SchemaUtils = require('../core/GraphQLSchemaUtils');
+
 const {hasUnaliasedSelection} = require('./RelayTransformUtils');
 const {
   assertAbstractType,
   assertCompositeType,
   assertLeafType,
 } = require('graphql');
-const {
-  CompilerContext,
-  SchemaUtils,
-  IRTransformer,
-} = require('graphql-compiler');
 
-import type {InlineFragment, LinkedField, ScalarField} from 'graphql-compiler';
+import type {
+  InlineFragment,
+  LinkedField,
+  MatchField,
+  ScalarField,
+} from '../core/GraphQLIR';
 import type {GraphQLCompositeType} from 'graphql';
 const {
   canHaveSelections,
@@ -55,6 +59,7 @@ function relayGenerateIDFieldTransform(
     args: [],
     directives: [],
     handles: null,
+    loc: {kind: 'Generated'},
     metadata: null,
     name: ID,
     type: idType,
@@ -65,13 +70,17 @@ function relayGenerateIDFieldTransform(
   return IRTransformer.transform(
     context,
     {
-      LinkedField: visitLinkedField,
+      LinkedField: visitLinkedOrMatchField,
+      MatchField: visitLinkedOrMatchField,
     },
     () => state,
   );
 }
 
-function visitLinkedField(field: LinkedField, state: State): LinkedField {
+function visitLinkedOrMatchField<T: LinkedField | MatchField>(
+  field: T,
+  state: State,
+): T {
   const transformedNode = this.traverse(field, state);
 
   // If the field already has an unaliased `id` field, do nothing
@@ -131,6 +140,7 @@ function buildIDFragment(
   return {
     kind: 'InlineFragment',
     directives: [],
+    loc: {kind: 'Generated'},
     metadata: null,
     typeCondition: fragmentType,
     selections: [idField],

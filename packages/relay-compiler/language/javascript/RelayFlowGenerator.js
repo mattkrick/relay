@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,13 +11,18 @@
 'use strict';
 
 const babelGenerator = require('@babel/generator').default;
+const FlattenTransform = require('../../transforms/FlattenTransform');
+const IRVisitor = require('../../core/GraphQLIRVisitor');
+const Profiler = require('../../core/GraphQLCompilerProfiler');
 const RelayMaskTransform = require('../../transforms/RelayMaskTransform');
+const RelayMatchTransform = require('../../transforms/RelayMatchTransform');
 const RelayRelayDirectiveTransform = require('../../transforms/RelayRelayDirectiveTransform');
 
 const invariant = require('invariant');
 const nullthrows = require('nullthrows');
 const t = require('@babel/types');
 
+const {isAbstractType} = require('../../core/GraphQLSchemaUtils');
 const {
   anyTypeAlias,
   exactObjectTypeAnnotation,
@@ -34,18 +39,11 @@ const {
   transformInputType,
 } = require('./RelayFlowTypeTransformers');
 const {GraphQLInputObjectType, GraphQLNonNull} = require('graphql');
-const {
-  FlattenTransform,
-  IRVisitor,
-  Profiler,
-  SchemaUtils,
-} = require('graphql-compiler');
 
+import type {IRTransform} from '../../core/GraphQLCompilerContext';
+import type {Fragment, Root} from '../../core/GraphQLIR';
 import type {TypeGeneratorOptions} from '../RelayLanguagePluginInterface';
-import type {IRTransform, Fragment, Root} from 'graphql-compiler';
 import type {GraphQLEnumType} from 'graphql';
-
-const {isAbstractType} = SchemaUtils;
 
 export type State = {|
   ...TypeGeneratorOptions,
@@ -120,7 +118,7 @@ function selectionsToBabel(
   flattenArray(selections).forEach(selection => {
     const {concreteType} = selection;
     if (concreteType) {
-      byConcreteType[concreteType] = byConcreteType[concreteType] || [];
+      byConcreteType[concreteType] = byConcreteType[concreteType] ?? [];
       byConcreteType[concreteType].push(selection);
     } else {
       const previousSel = baseFields.get(selection.key);
@@ -254,14 +252,14 @@ function createVisitor(options: TypeGeneratorOptions) {
     existingFragmentNames: options.existingFragmentNames,
     generatedFragments: new Set(),
     generatedInputObjectTypes: {},
-    inputFieldWhiteList: options.inputFieldWhiteList,
-    relayRuntimeModule: options.relayRuntimeModule,
+    optionalInputFields: options.optionalInputFields,
     usedEnums: {},
     usedFragments: new Set(),
     useHaste: options.useHaste,
     useSingleArtifactDirectory: options.useSingleArtifactDirectory,
     noFutureProofEnums: options.noFutureProofEnums,
   };
+  let hasMatchField = false;
 
   return {
     leave: {
@@ -285,16 +283,24 @@ function createVisitor(options: TypeGeneratorOptions) {
             ),
           ]),
         );
-        return t.program([
-          ...getFragmentImports(state),
-          ...getEnumDefinitions(state),
-          ...inputObjectTypes,
-          inputVariablesType,
-          responseType,
-          operationType,
-        ]);
+        const importedTypes = [];
+        if (hasMatchField) {
+          importedTypes.push('MatchPointer');
+        }
+        return t.program(
+          [
+            ...getFragmentImports(state),
+            ...getEnumDefinitions(state),
+            importedTypes.length
+              ? importTypes(importedTypes, 'relay-runtime')
+              : null,
+            ...inputObjectTypes,
+            inputVariablesType,
+            responseType,
+            operationType,
+          ].filter(Boolean),
+        );
       },
-
       Fragment(node) {
         let selections = flattenArray(node.selections);
         const numConecreteSelections = selections.filter(s => s.concreteType)
@@ -331,15 +337,18 @@ function createVisitor(options: TypeGeneratorOptions) {
           unmasked ? undefined : refTypeName,
         );
         const type = isPlural(node) ? readOnlyArrayOfType(baseType) : baseType;
+        const importedTypes = ['FragmentReference'];
+        if (hasMatchField) {
+          importedTypes.push('MatchPointer');
+        }
         return t.program([
           ...getFragmentImports(state),
           ...getEnumDefinitions(state),
-          importTypes(['FragmentReference'], state.relayRuntimeModule),
+          importTypes(importedTypes, 'relay-runtime'),
           refType,
           exportType(node.name, type),
         ]);
       },
-
       InlineFragment(node) {
         const typeCondition = node.typeCondition;
         return flattenArray(node.selections).map(typeSelection => {
@@ -365,7 +374,7 @@ function createVisitor(options: TypeGeneratorOptions) {
       ScalarField(node) {
         return [
           {
-            key: node.alias || node.name,
+            key: node.alias ?? node.name,
             schemaName: node.name,
             value: transformScalarType(node.type, state),
           },
@@ -374,10 +383,22 @@ function createVisitor(options: TypeGeneratorOptions) {
       LinkedField(node) {
         return [
           {
-            key: node.alias || node.name,
+            key: node.alias ?? node.name,
             schemaName: node.name,
             nodeType: node.type,
             nodeSelections: selectionsToMap(flattenArray(node.selections)),
+          },
+        ];
+      },
+      MatchField(node) {
+        hasMatchField = true;
+        return [
+          {
+            key: node.alias ?? node.name,
+            schemaName: node.name,
+            value: t.nullableTypeAnnotation(
+              t.genericTypeAnnotation(t.identifier('MatchPointer')),
+            ),
           },
         ];
       },
@@ -394,7 +415,7 @@ function createVisitor(options: TypeGeneratorOptions) {
   };
 }
 
-function selectionsToMap(selections: Array<Selection>): SelectionMap {
+function selectionsToMap(selections: $ReadOnlyArray<Selection>): SelectionMap {
   const map = new Map();
   selections.forEach(selection => {
     const previousSel = map.get(selection.key);
@@ -406,7 +427,9 @@ function selectionsToMap(selections: Array<Selection>): SelectionMap {
   return map;
 }
 
-function flattenArray<T>(arrayOfArrays: Array<Array<T>>): Array<T> {
+function flattenArray<T>(
+  arrayOfArrays: $ReadOnlyArray<$ReadOnlyArray<T>>,
+): $ReadOnlyArray<T> {
   const result = [];
   arrayOfArrays.forEach(array => result.push(...array));
   return result;
@@ -528,6 +551,7 @@ function getRefTypeName(name: string): string {
 const FLOW_TRANSFORMS: Array<IRTransform> = [
   RelayRelayDirectiveTransform.transform,
   RelayMaskTransform.transform,
+  RelayMatchTransform.transform,
   FlattenTransform.transformWithOptions({}),
 ];
 

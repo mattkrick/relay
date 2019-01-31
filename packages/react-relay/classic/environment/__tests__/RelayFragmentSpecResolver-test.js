@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -22,7 +22,7 @@ const {
   getClassicFragment,
   getClassicOperation,
 } = require('../../query/RelayGraphQLTag');
-const {createOperationSelector} = require('../RelayOperationSelector');
+const {createOperationDescriptor} = require('../RelayOperationDescriptor');
 
 describe('RelayFragmentSpecResolver', () => {
   let UserFragment;
@@ -56,7 +56,7 @@ describe('RelayFragmentSpecResolver', () => {
   function setName(id, name) {
     const nodeAlias = generateRQLFieldAlias(`node.id(${id})`);
     environment.commitPayload(
-      createOperationSelector(UserQuery, {
+      createOperationDescriptor(UserQuery, {
         fetchSize: false,
         id,
         size: null,
@@ -78,7 +78,7 @@ describe('RelayFragmentSpecResolver', () => {
     // If name is not specified it will be nulled out
     const name = environment.getStoreData().getNodeData()[id].name;
     environment.commitPayload(
-      createOperationSelector(UserQuery, {
+      createOperationDescriptor(UserQuery, {
         fetchSize: true,
         id,
         size,
@@ -161,7 +161,7 @@ describe('RelayFragmentSpecResolver', () => {
 
     let nodeAlias = generateRQLFieldAlias('node.id(4)');
     environment.commitPayload(
-      createOperationSelector(UserQuery, {
+      createOperationDescriptor(UserQuery, {
         fetchSize: false,
         id: '4',
         size: null,
@@ -176,7 +176,7 @@ describe('RelayFragmentSpecResolver', () => {
     );
     nodeAlias = generateRQLFieldAlias('node.id(beast)');
     environment.commitPayload(
-      createOperationSelector(UserQuery, {
+      createOperationDescriptor(UserQuery, {
         fetchSize: false,
         id: 'beast',
         size: null,
@@ -469,7 +469,7 @@ describe('RelayFragmentSpecResolver', () => {
             id: '4',
             name: 'Zuck',
             profilePicture: {
-              __dataID__: jasmine.any(String),
+              __dataID__: expect.any(String),
               uri: 'https://4.jpg',
             },
           },
@@ -491,7 +491,7 @@ describe('RelayFragmentSpecResolver', () => {
             id: '4',
             name: 'Zuck',
             profilePicture: {
-              __dataID__: jasmine.any(String),
+              __dataID__: expect.any(String),
               uri: 'https://zuck.jpg',
             },
           },
@@ -820,7 +820,7 @@ describe('RelayFragmentSpecResolver', () => {
               id: '4',
               name: 'Zuck',
               profilePicture: {
-                __dataID__: jasmine.any(String),
+                __dataID__: expect.any(String),
                 uri: 'https://4.jpg',
               },
             },
@@ -844,7 +844,7 @@ describe('RelayFragmentSpecResolver', () => {
               id: '4',
               name: 'Zuck',
               profilePicture: {
-                __dataID__: jasmine.any(String),
+                __dataID__: expect.any(String),
                 uri: 'https://zuck.jpg',
               },
             },

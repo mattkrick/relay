@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -18,10 +18,13 @@ const {ROOT_ID, ROOT_TYPE} = require('./RelayStoreUtils');
 
 import type {PayloadData, PayloadError} from '../network/RelayNetworkTypes';
 import type {NormalizationOptions} from './RelayResponseNormalizer';
-import type {RelayResponsePayload, Selector} from './RelayStoreTypes';
+import type {
+  RelayResponsePayload,
+  NormalizationSelector,
+} from './RelayStoreTypes';
 
 function normalizeRelayPayload(
-  selector: Selector,
+  selector: NormalizationSelector,
   payload: PayloadData,
   errors: ?Array<PayloadError>,
   options: NormalizationOptions = {handleStrippedNulls: false},
@@ -30,12 +33,14 @@ function normalizeRelayPayload(
   source.set(ROOT_ID, RelayModernRecord.create(ROOT_ID, ROOT_TYPE));
   const {
     fieldPayloads,
-    deferrableSelections,
+    incrementalPlaceholders,
+    matchPayloads,
   } = RelayResponseNormalizer.normalize(source, selector, payload, options);
   return {
     errors,
     fieldPayloads,
-    deferrableSelections,
+    incrementalPlaceholders,
+    matchPayloads,
     source,
   };
 }

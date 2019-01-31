@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -20,8 +20,8 @@ const RelayStoreUtils = require('../../store/RelayStoreUtils');
 const simpleClone = require('../../util/simpleClone');
 
 const {
-  createOperationSelector,
-} = require('../../store/RelayModernOperationSelector');
+  createOperationDescriptor,
+} = require('../../store/RelayModernOperationDescriptor');
 
 const {
   ID_KEY,
@@ -189,8 +189,7 @@ describe('RelayRecordSourceProxy', () => {
   describe('commitPayload()', () => {
     const {generateAndCompile} = RelayModernTestUtils;
     it('override current fields ', () => {
-      const {Query} = generateAndCompile(
-        `
+      const {Query} = generateAndCompile(`
         query Query {
           node(id: "sf") {
             id
@@ -198,9 +197,8 @@ describe('RelayRecordSourceProxy', () => {
             name
           }
         }
-      `,
-      );
-      const operationSelector = createOperationSelector(Query, {});
+      `);
+      const operationDescriptor = createOperationDescriptor(Query, {});
       const rawPayload = {
         node: {
           id: 'sf',
@@ -208,7 +206,7 @@ describe('RelayRecordSourceProxy', () => {
           name: 'SF',
         },
       };
-      store.commitPayload(operationSelector, rawPayload);
+      store.commitPayload(operationDescriptor, rawPayload);
       expect(sinkData.sf).toEqual({
         [ID_KEY]: 'sf',
         [TYPENAME_KEY]: 'Page',
@@ -218,8 +216,7 @@ describe('RelayRecordSourceProxy', () => {
     });
 
     it('applies new records ', () => {
-      const {Query} = generateAndCompile(
-        `
+      const {Query} = generateAndCompile(`
         query Query {
           node(id: "seattle") {
             id
@@ -227,9 +224,8 @@ describe('RelayRecordSourceProxy', () => {
             name
           }
         }
-      `,
-      );
-      const operationSelector = createOperationSelector(Query, {});
+      `);
+      const operationDescriptor = createOperationDescriptor(Query, {});
       const rawPayload = {
         node: {
           id: 'seattle',
@@ -237,7 +233,7 @@ describe('RelayRecordSourceProxy', () => {
           name: 'Seattle',
         },
       };
-      store.commitPayload(operationSelector, rawPayload);
+      store.commitPayload(operationDescriptor, rawPayload);
       expect(sinkData.seattle).toEqual({
         [ID_KEY]: 'seattle',
         [TYPENAME_KEY]: 'Page',
@@ -254,8 +250,7 @@ describe('RelayRecordSourceProxy', () => {
       const handlerProvider = name => handlers[name];
       store = new RelayRecordSourceProxy(mutator, handlerProvider);
 
-      const {Query} = generateAndCompile(
-        `
+      const {Query} = generateAndCompile(`
         query Query {
           node(id: "sf") {
             id
@@ -263,9 +258,8 @@ describe('RelayRecordSourceProxy', () => {
             name @__clientField(handle: "handlerName")
           }
         }
-      `,
-      );
-      const operationSelector = createOperationSelector(Query, {});
+      `);
+      const operationDescriptor = createOperationDescriptor(Query, {});
       const rawPayload = {
         node: {
           id: 'sf',
@@ -273,7 +267,7 @@ describe('RelayRecordSourceProxy', () => {
           name: 'SF',
         },
       };
-      store.commitPayload(operationSelector, rawPayload);
+      store.commitPayload(operationDescriptor, rawPayload);
 
       const fieldPayload = {
         args: {},

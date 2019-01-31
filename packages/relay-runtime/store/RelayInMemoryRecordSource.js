@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,13 +12,10 @@
 
 const RelayRecordState = require('./RelayRecordState');
 
+import type {Record, RecordMap} from '../util/RelayCombinedEnvironmentTypes';
 import type {DataID} from '../util/RelayRuntimeTypes';
 import type {RecordState} from './RelayRecordState';
 import type {MutableRecordSource} from './RelayStoreTypes';
-import type {
-  Record,
-  RecordMap,
-} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
 
 const {EXISTENT, NONEXISTENT, UNKNOWN} = RelayRecordState;
 

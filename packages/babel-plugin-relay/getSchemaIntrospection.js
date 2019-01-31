@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -16,13 +16,27 @@ const path = require('path');
 const {SCHEMA_EXTENSION} = require('./GraphQLRelayDirective');
 const {parse} = require('graphql');
 
+function readSource(sourceFile: string, basePath: ?string): string {
+  const fullSourceFile =
+    !fs.existsSync(sourceFile) && basePath
+      ? path.join(basePath, sourceFile)
+      : sourceFile;
+
+  return fs.readFileSync(fullSourceFile, 'utf8');
+}
+
 function getSchemaIntrospection(schemaPath: string, basePath: ?string) {
   try {
-    let fullSchemaPath = schemaPath;
-    if (!fs.existsSync(fullSchemaPath) && basePath) {
-      fullSchemaPath = path.join(basePath, schemaPath);
+    const schemaPaths = schemaPath.split(',');
+    if (schemaPaths.length > 1) {
+      return parse(
+        SCHEMA_EXTENSION +
+          '\n' +
+          schemaPaths.map(file => readSource(file, basePath)).join('\n'),
+      );
     }
-    const source = fs.readFileSync(fullSchemaPath, 'utf8');
+
+    const source = readSource(schemaPath, basePath);
     if (source[0] === '{') {
       return JSON.parse(source);
     }

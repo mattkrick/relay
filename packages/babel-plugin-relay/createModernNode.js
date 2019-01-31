@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -18,7 +18,6 @@ const {print} = require('graphql');
 
 const GENERATED = './__generated__/';
 
-import typeof BabelTypes from 'babel-types';
 import type {OperationDefinitionNode, FragmentDefinitionNode} from 'graphql';
 import type {BabelState} from './BabelPluginRelay';
 
@@ -27,7 +26,7 @@ import type {BabelState} from './BabelPluginRelay';
  * definitions to lazy require function calls.
  */
 function createModernNode(
-  t: BabelTypes,
+  t: $FlowFixMe,
   graphqlDefinition: OperationDefinitionNode | FragmentDefinitionNode,
   state: BabelState,
   options: {
@@ -98,7 +97,7 @@ function createModernNode(
 }
 
 function warnNeedsRebuild(
-  t: BabelTypes,
+  t: $FlowFixMe,
   definitionName: string,
   buildCommand: string,
 ) {

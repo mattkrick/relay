@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,14 +11,14 @@
 'use strict';
 
 const React = require('React');
+const ReactRelayContext = require('../ReactRelayContext');
 const ReactRelayPaginationContainer = require('../ReactRelayPaginationContainer');
-const ReactRelayPropTypes = require('../ReactRelayPropTypes');
 const ReactTestRenderer = require('ReactTestRenderer');
 const RelayModernTestUtils = require('RelayModernTestUtils');
 
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
 const {
-  createOperationSelector,
+  createOperationDescriptor,
   ConnectionHandler,
   ConnectionInterface,
   ROOT_ID,
@@ -43,43 +43,42 @@ describe('ReactRelayPaginationContainer', () => {
 
   class ContextSetter extends React.Component {
     constructor(props) {
-      super();
-      // eslint-disable-next-line no-shadow
-      const {environment, variables} = props;
-      this.relay = {environment, variables};
-      this.state = {props: null};
+      super(props);
+
+      this.__relayContext = {
+        environment: props.environment,
+        variables: props.variables,
+      };
+
+      this.state = {
+        props: null,
+      };
     }
-    UNSAFE_componentWillReceiveProps(nextProps) {
-      // eslint-disable-next-line no-shadow
-      const {environment, variables} = nextProps;
-      if (
-        environment !== this.relay.environment ||
-        variables !== this.relay.variables
-      ) {
-        this.relay = {environment, variables};
-      }
-    }
-    getChildContext() {
-      return {relay: this.relay};
-    }
+
     setProps(props) {
       this.setState({props});
     }
     setContext(env, vars) {
-      this.relay = {environment: env, variables: vars};
-      this.setState({context: {environment: env, variables: vars}});
+      this.__relayContext = {
+        environment: env,
+        variables: vars,
+      };
+      this.setProps({});
     }
+
     render() {
-      const child = React.Children.only(this.props.children);
+      let child = React.Children.only(this.props.children);
       if (this.state.props) {
-        return React.cloneElement(child, this.state.props);
+        child = React.cloneElement(child, this.state.props);
       }
-      return child;
+
+      return (
+        <ReactRelayContext.Provider value={this.__relayContext}>
+          {child}
+        </ReactRelayContext.Provider>
+      );
     }
   }
-  ContextSetter.childContextTypes = {
-    relay: ReactRelayPropTypes.Relay,
-  };
 
   beforeEach(() => {
     jest.resetModules();
@@ -88,8 +87,7 @@ describe('ReactRelayPaginationContainer', () => {
     environment = createMockEnvironment({
       handlerProvider: () => ConnectionHandler,
     });
-    ({UserFragment, UserQuery} = generateAndCompile(
-      `
+    ({UserFragment, UserQuery} = generateAndCompile(`
       query UserQuery(
         $after: ID
         $count: Int!
@@ -123,8 +121,7 @@ describe('ReactRelayPaginationContainer', () => {
           }
         }
       }
-    `,
-    ));
+    `));
 
     render = jest.fn(props => {
       ({hasMore, isLoading, loadMore, refetchConnection} = props.relay);
@@ -168,7 +165,7 @@ describe('ReactRelayPaginationContainer', () => {
     );
 
     // Pre-populate the store with data
-    environment.commitPayload(createOperationSelector(UserQuery, variables), {
+    environment.commitPayload(createOperationDescriptor(UserQuery, variables), {
       node: {
         id: '4',
         __typename: 'User',
@@ -190,7 +187,7 @@ describe('ReactRelayPaginationContainer', () => {
       },
     });
     environment.commitPayload(
-      createOperationSelector(UserQuery, {
+      createOperationDescriptor(UserQuery, {
         ...variables,
         id: '842472',
       }),
@@ -230,7 +227,7 @@ describe('ReactRelayPaginationContainer', () => {
   it('passes non-fragment props to the component', () => {
     ReactTestRenderer.create(
       <ContextSetter environment={environment} variables={variables}>
-        <TestContainer bar={1} foo={'foo'} />
+        <TestContainer bar={1} foo="foo" />
       </ContextSetter>,
     );
     expect(render.mock.calls.length).toBe(1);
@@ -238,11 +235,11 @@ describe('ReactRelayPaginationContainer', () => {
       bar: 1,
       foo: 'foo',
       relay: {
-        environment: jasmine.any(Object),
-        hasMore: jasmine.any(Function),
-        isLoading: jasmine.any(Function),
-        loadMore: jasmine.any(Function),
-        refetchConnection: jasmine.any(Function),
+        environment: expect.any(Object),
+        hasMore: expect.any(Function),
+        isLoading: expect.any(Function),
+        loadMore: expect.any(Function),
+        refetchConnection: expect.any(Function),
       },
       user: null,
     });
@@ -260,11 +257,11 @@ describe('ReactRelayPaginationContainer', () => {
     expect(render.mock.calls.length).toBe(1);
     expect(render.mock.calls[0][0]).toEqual({
       relay: {
-        environment: jasmine.any(Object),
-        hasMore: jasmine.any(Function),
-        isLoading: jasmine.any(Function),
-        loadMore: jasmine.any(Function),
-        refetchConnection: jasmine.any(Function),
+        environment: expect.any(Object),
+        hasMore: expect.any(Function),
+        isLoading: expect.any(Function),
+        loadMore: expect.any(Function),
+        refetchConnection: expect.any(Function),
       },
       user: null,
     });
@@ -306,26 +303,28 @@ describe('ReactRelayPaginationContainer', () => {
         },
       },
       relay: {
-        environment: jasmine.any(Object),
-        hasMore: jasmine.any(Function),
-        isLoading: jasmine.any(Function),
-        loadMore: jasmine.any(Function),
-        refetchConnection: jasmine.any(Function),
+        environment: expect.any(Object),
+        hasMore: expect.any(Function),
+        isLoading: expect.any(Function),
+        loadMore: expect.any(Function),
+        refetchConnection: expect.any(Function),
       },
     });
     // Subscribes for updates
     expect(environment.subscribe.mock.calls.length).toBe(1);
     expect(environment.subscribe.mock.calls[0][0]).toEqual({
       dataID: '4',
-      data: jasmine.any(Object),
+      data: expect.any(Object),
       node: UserFragment,
-      seenRecords: jasmine.any(Object),
+      seenRecords: expect.any(Object),
       variables: {
         after: null,
         count: 1,
         orderby: ['name'],
         isViewerFriendLocal: false,
       },
+      isMissingData: false,
+      owner: null,
     });
   });
 
@@ -368,11 +367,11 @@ describe('ReactRelayPaginationContainer', () => {
         friends: null,
       },
       relay: {
-        environment: jasmine.any(Object),
-        hasMore: jasmine.any(Function),
-        isLoading: jasmine.any(Function),
-        loadMore: jasmine.any(Function),
-        refetchConnection: jasmine.any(Function),
+        environment: expect.any(Object),
+        hasMore: expect.any(Function),
+        isLoading: expect.any(Function),
+        loadMore: expect.any(Function),
+        refetchConnection: expect.any(Function),
       },
     });
   });
@@ -418,26 +417,28 @@ describe('ReactRelayPaginationContainer', () => {
         },
       },
       relay: {
-        environment: jasmine.any(Object),
-        hasMore: jasmine.any(Function),
-        isLoading: jasmine.any(Function),
-        loadMore: jasmine.any(Function),
-        refetchConnection: jasmine.any(Function),
+        environment: expect.any(Object),
+        hasMore: expect.any(Function),
+        isLoading: expect.any(Function),
+        loadMore: expect.any(Function),
+        refetchConnection: expect.any(Function),
       },
     });
     // Container subscribes for updates on new props
     expect(environment.subscribe.mock.calls.length).toBe(1);
     expect(environment.subscribe.mock.calls[0][0]).toEqual({
       dataID: '842472',
-      data: jasmine.any(Object),
+      data: expect.any(Object),
       node: UserFragment,
-      seenRecords: jasmine.any(Object),
+      seenRecords: expect.any(Object),
       variables: {
         after: null,
         count: 1,
         orderby: ['name'],
         isViewerFriendLocal: false,
       },
+      isMissingData: false,
+      owner: null,
     });
   });
 
@@ -484,26 +485,28 @@ describe('ReactRelayPaginationContainer', () => {
         },
       },
       relay: {
-        environment: jasmine.any(Object),
-        hasMore: jasmine.any(Function),
-        isLoading: jasmine.any(Function),
-        loadMore: jasmine.any(Function),
-        refetchConnection: jasmine.any(Function),
+        environment: expect.any(Object),
+        hasMore: expect.any(Function),
+        isLoading: expect.any(Function),
+        loadMore: expect.any(Function),
+        refetchConnection: expect.any(Function),
       },
     });
     // Subscribes for updates
     expect(environment.subscribe.mock.calls.length).toBe(1);
     expect(environment.subscribe.mock.calls[0][0]).toEqual({
       dataID: '4',
-      data: jasmine.any(Object),
+      data: expect.any(Object),
       node: UserFragment,
-      seenRecords: jasmine.any(Object),
+      seenRecords: expect.any(Object),
       variables: {
         after: null,
         count: 1,
         orderby: ['name'],
         isViewerFriendLocal: false,
       },
+      isMissingData: false,
+      owner: null,
     });
 
     // Data & Variables are passed to component
@@ -528,26 +531,28 @@ describe('ReactRelayPaginationContainer', () => {
         },
       },
       relay: {
-        environment: jasmine.any(Object),
-        hasMore: jasmine.any(Function),
-        isLoading: jasmine.any(Function),
-        loadMore: jasmine.any(Function),
-        refetchConnection: jasmine.any(Function),
+        environment: expect.any(Object),
+        hasMore: expect.any(Function),
+        isLoading: expect.any(Function),
+        loadMore: expect.any(Function),
+        refetchConnection: expect.any(Function),
       },
     });
     // Subscribes for updates
     expect(environment.subscribe.mock.calls.length).toBe(1);
     expect(environment.subscribe.mock.calls[0][0]).toEqual({
       dataID: '4',
-      data: jasmine.any(Object),
+      data: expect.any(Object),
       node: UserFragment,
-      seenRecords: jasmine.any(Object),
+      seenRecords: expect.any(Object),
       variables: {
         after: null,
         count: 1,
         orderby: ['name'],
         isViewerFriendLocal: false,
       },
+      isMissingData: false,
+      owner: null,
     });
   });
 
@@ -704,35 +709,33 @@ describe('ReactRelayPaginationContainer', () => {
   });
 
   it('fails if missing @connection directive', () => {
-    ({UserFragment, UserQuery} = generateAndCompile(
-      `
-        query UserQuery(
-          $after: ID
-          $count: Int!
-          $id: ID!
-          $orderby: [String]
-        ) {
-          node(id: $id) {
-            id
-            ...UserFragment
-          }
+    ({UserFragment, UserQuery} = generateAndCompile(`
+      query UserQuery(
+        $after: ID
+        $count: Int!
+        $id: ID!
+        $orderby: [String]
+      ) {
+        node(id: $id) {
+          id
+          ...UserFragment
         }
+      }
 
-        fragment UserFragment on User {
-          friends(after: $after, first: $count, orderby: $orderby) {
-            edges {
-              node {
-                id
-              }
-            }
-            pageInfo {
-              endCursor
-              hasNextPage
+      fragment UserFragment on User {
+        friends(after: $after, first: $count, orderby: $orderby) {
+          edges {
+            node {
+              id
             }
           }
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
         }
-      `,
-    ));
+      }
+    `));
 
     TestContainer = ReactRelayPaginationContainer.createContainer(
       TestComponent,
@@ -764,46 +767,44 @@ describe('ReactRelayPaginationContainer', () => {
 
   it('does not fail invariant if one fragment has a @connection directive', () => {
     let ViewerFragment;
-    ({UserFragment, UserQuery, ViewerFragment} = generateAndCompile(
-      `
-        query UserQuery(
-          $after: ID
-          $count: Int!
-          $id: ID!
-          $orderby: [String]
+    ({UserFragment, UserQuery, ViewerFragment} = generateAndCompile(`
+      query UserQuery(
+        $after: ID
+        $count: Int!
+        $id: ID!
+        $orderby: [String]
+      ) {
+        viewer {
+          ...ViewerFragment
+        }
+        node(id: $id) {
+          id
+          ...UserFragment
+        }
+      }
+
+      fragment ViewerFragment on Viewer {
+        actor{
+          id
+        }
+      }
+
+      fragment UserFragment on User {
+        friends(after: $after, first: $count, orderby: $orderby) @connection(
+          key: "UserFragment_friends"
         ) {
-          viewer {
-            ...ViewerFragment
-          }
-          node(id: $id) {
-            id
-            ...UserFragment
-          }
-        }
-
-        fragment ViewerFragment on Viewer {
-          actor{
-            id
-          }
-        }
-
-        fragment UserFragment on User {
-          friends(after: $after, first: $count, orderby: $orderby) @connection(
-            key: "UserFragment_friends"
-          ) {
-            edges {
-              node {
-                id
-              }
-            }
-            pageInfo {
-              endCursor
-              hasNextPage
+          edges {
+            node {
+              id
             }
           }
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
         }
-      `,
-    ));
+      }
+    `));
 
     TestContainer = ReactRelayPaginationContainer.createContainer(
       TestComponent,
@@ -1252,6 +1253,7 @@ describe('ReactRelayPaginationContainer', () => {
                   {
                     cursor: 'cursor:2',
                     node: {
+                      __typename: 'User',
                       id: 'node:2',
                     },
                   },
@@ -1288,6 +1290,7 @@ describe('ReactRelayPaginationContainer', () => {
                 {
                   cursor: 'cursor:2',
                   node: {
+                    __typename: 'User',
                     id: 'node:2',
                   },
                 },
@@ -1393,34 +1396,38 @@ describe('ReactRelayPaginationContainer', () => {
       expect(references.length).toBe(1);
       expect(references[0].dispose).toBeCalled();
     });
+
+    it('releases pagination results if unmounted', () => {
+      expect.assertions(2);
+      loadMore(1, jest.fn());
+      environment.mock.resolve(UserQuery, {
+        data: {
+          node: {
+            id: '4',
+            __typename: 'User',
+            // The resuls don't matter, only that their results are retained
+            friends: null,
+          },
+        },
+      });
+      instance.unmount();
+      expect(references.length).toBe(1);
+      expect(references[0].dispose).toBeCalled();
+    });
+
     it('should not load more data if container is unmounted', () => {
       const userPointer = environment.lookup({
         dataID: ROOT_ID,
         node: UserQuery.fragment,
         variables,
       }).data.node;
-      class TestContainerWrapper extends React.Component {
-        state = {
-          mounted: true,
-        };
-        componentDidMount() {
-          setTimeout(() => {
-            this.setState({mounted: false});
-          }, 1);
-        }
-        render() {
-          return this.state.mounted ? (
-            <TestContainer user={userPointer} />
-          ) : null;
-        }
-      }
       instance = ReactTestRenderer.create(
         <ContextSetter environment={environment} variables={variables}>
-          <TestContainerWrapper />
+          <TestContainer user={userPointer} />
         </ContextSetter>,
       );
       variables = {};
-      jest.runOnlyPendingTimers();
+      instance.unmount();
       const callback = jest.fn();
       loadMore(1, callback);
       expect(callback).not.toBeCalled();
@@ -1596,12 +1603,87 @@ describe('ReactRelayPaginationContainer', () => {
           },
         },
         relay: {
-          environment: jasmine.any(Object),
-          hasMore: jasmine.any(Function),
-          isLoading: jasmine.any(Function),
-          loadMore: jasmine.any(Function),
-          refetchConnection: jasmine.any(Function),
+          environment: expect.any(Object),
+          hasMore: expect.any(Function),
+          isLoading: expect.any(Function),
+          loadMore: expect.any(Function),
+          refetchConnection: expect.any(Function),
         },
+      });
+    });
+
+    it('renders with the results of the new variables after components received updated props (not related to the connection)', () => {
+      expect.assertions(9);
+      expect(render.mock.calls.length).toBe(1);
+      // By default friends list should have 1 item
+      expect(render.mock.calls[0][0].user.friends.edges.length).toBe(1);
+      // Let's refetch with new variables
+      refetchConnection(1, jest.fn(), {
+        isViewerFriend: true,
+      });
+      expect(render.mock.calls.length).toBe(1);
+      environment.mock.resolve(UserQuery, {
+        data: {
+          node: {
+            __typename: 'User',
+            id: '4',
+            friends: {
+              edges: [],
+              pageInfo: {
+                endCursor: null,
+                hasNextPage: false,
+              },
+            },
+          },
+        },
+      });
+      expect(render.mock.calls.length).toBe(2);
+      expect(render.mock.calls[1][0].user.friends.edges.length).toBe(0);
+      expect(render.mock.calls[1][0]).toEqual({
+        user: {
+          id: '4',
+          friends: {
+            edges: [],
+            pageInfo: {
+              endCursor: null,
+              hasNextPage: false,
+            },
+          },
+        },
+        relay: {
+          environment: expect.any(Object),
+          hasMore: expect.any(Function),
+          isLoading: expect.any(Function),
+          loadMore: expect.any(Function),
+          refetchConnection: expect.any(Function),
+        },
+      });
+
+      // This should trigger cWRP in the ReactRelayPaginationContainer
+      instance.getInstance().setProps({
+        someProp: 'test',
+      });
+      expect(render.mock.calls.length).toBe(3);
+      expect(render.mock.calls[2][0].user.friends.edges.length).toBe(0);
+      expect(render.mock.calls[2][0]).toEqual({
+        user: {
+          id: '4',
+          friends: {
+            edges: [],
+            pageInfo: {
+              endCursor: null,
+              hasNextPage: false,
+            },
+          },
+        },
+        relay: {
+          environment: expect.any(Object),
+          hasMore: expect.any(Function),
+          isLoading: expect.any(Function),
+          loadMore: expect.any(Function),
+          refetchConnection: expect.any(Function),
+        },
+        someProp: 'test',
       });
     });
 
@@ -1695,6 +1777,24 @@ describe('ReactRelayPaginationContainer', () => {
       expect(references[0].dispose).toBeCalled();
     });
 
+    it('releases pagination results if unmounted', () => {
+      expect.assertions(2);
+      refetchConnection(1, jest.fn());
+      environment.mock.resolve(UserQuery, {
+        data: {
+          node: {
+            id: '4',
+            __typename: 'User',
+            // The resuls don't matter, only that their results are retained
+            friends: null,
+          },
+        },
+      });
+      instance.unmount();
+      expect(references.length).toBe(1);
+      expect(references[0].dispose).toBeCalled();
+    });
+
     it('rerenders with the results of new overridden variables', () => {
       expect.assertions(8);
       expect(render.mock.calls.length).toBe(1);
@@ -1748,11 +1848,11 @@ describe('ReactRelayPaginationContainer', () => {
           },
         },
         relay: {
-          environment: jasmine.any(Object),
-          hasMore: jasmine.any(Function),
-          isLoading: jasmine.any(Function),
-          loadMore: jasmine.any(Function),
-          refetchConnection: jasmine.any(Function),
+          environment: expect.any(Object),
+          hasMore: expect.any(Function),
+          isLoading: expect.any(Function),
+          loadMore: expect.any(Function),
+          refetchConnection: expect.any(Function),
         },
       });
     });
@@ -1803,28 +1903,12 @@ describe('ReactRelayPaginationContainer', () => {
         node: UserQuery.fragment,
         variables,
       }).data.node;
-      class TestContainerWrapper extends React.Component {
-        state = {
-          mounted: true,
-        };
-        componentDidMount() {
-          setTimeout(() => {
-            this.setState({mounted: false});
-          }, 1000);
-        }
-
-        render() {
-          return this.state.mounted ? (
-            <TestContainer user={userPointer} />
-          ) : null;
-        }
-      }
       instance = ReactTestRenderer.create(
         <ContextSetter environment={environment} variables={variables}>
-          <TestContainerWrapper />
+          <TestContainer user={userPointer} />
         </ContextSetter>,
       );
-      jest.runOnlyPendingTimers();
+      instance.unmount();
       const callback = jest.fn();
       refetchConnection(1, callback);
       expect(callback).not.toBeCalled();

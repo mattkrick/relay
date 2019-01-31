@@ -103,7 +103,21 @@ query TestQuery(
 ~~~~~~~~~~ OUTPUT ~~~~~~~~~~
 THROWN EXCEPTION:
 
-Error: Expected all fields on the same parent with the name or alias \`friendsAlias\` to have the same name and arguments. Got \`friendsAlias: friends(first: 10)\` and \`friendsAlias: friends(first: 5)\`.
+Error: Encountered 1 error(s):
+- Expected all fields on the same parent with the name or alias 'friendsAlias' to have the same name and arguments.
+  
+  Source: GraphQL request (12:7)
+  11:     ... on User {
+  12:       friendsAlias: friends(first: 10) {
+            ^
+  13:         edges {
+  
+  Source: GraphQL request (7:7)
+  6:     ... on User {
+  7:       friendsAlias: friends(first: 5) {
+           ^
+  8:         count
+  
 `;
 
 exports[`FlattenTransform matches expected output: flatten-same-name-different-args.graphql 1`] = `
@@ -133,7 +147,21 @@ query TestQuery(
 ~~~~~~~~~~ OUTPUT ~~~~~~~~~~
 THROWN EXCEPTION:
 
-Error: Expected all fields on the same parent with the name or alias \`friends\` to have the same name and arguments. Got \`friends(first: 10)\` and \`friends(first: 5)\`.
+Error: Encountered 1 error(s):
+- Expected all fields on the same parent with the name or alias 'friends' to have the same name and arguments.
+  
+  Source: GraphQL request (12:7)
+  11:     ... on User {
+  12:       friends(first: 10) {
+            ^
+  13:         edges {
+  
+  Source: GraphQL request (7:7)
+  6:     ... on User {
+  7:       friends(first: 5) {
+           ^
+  8:         count
+  
 `;
 
 exports[`FlattenTransform matches expected output: flattens-inline-inside-condition.graphql 1`] = `
@@ -313,6 +341,140 @@ fragment LinkedHandleField on User {
 fragment LinkedHandleField on User {
   friends(first: 10) @__clientField(handle: "clientFriends") @__clientField(handle: "recentFriends") {
     count
+  }
+}
+
+`;
+
+exports[`FlattenTransform matches expected output: match-field.graphql 1`] = `
+~~~~~~~~~~ INPUT ~~~~~~~~~~
+fragment NameRendererFragment on User {
+  id
+  nameRenderer @match {
+    ...PlainUserNameRenderer_name @module(name: "PlainUserNameRenderer.react")
+    ...MarkdownUserNameRenderer_name
+      @module(name: "MarkdownUserNameRenderer.react")
+  }
+  plainNameRenderer: nameRenderer @match {
+    ...PlainUserNameRenderer_name @module(name: "PlainUserNameRenderer.react")
+  }
+}
+
+fragment PlainUserNameRenderer_name on PlainUserNameRenderer {
+  plaintext
+  data {
+    text
+  }
+}
+
+fragment MarkdownUserNameRenderer_name on MarkdownUserNameRenderer {
+  markdown
+  data {
+    markup
+  }
+}
+
+~~~~~~~~~~ OUTPUT ~~~~~~~~~~
+fragment NameRendererFragment on User {
+  id
+  nameRenderer(supported: ["PlainUserNameRenderer", "MarkdownUserNameRenderer"]) {
+    ...PlainUserNameRenderer_name
+    ... on PlainUserNameRenderer {
+      __match_component: js(module: "PlainUserNameRenderer.react")
+      __match_fragment: js(module: "PlainUserNameRenderer_name$normalization.graphql")
+    }
+    ...MarkdownUserNameRenderer_name
+    ... on MarkdownUserNameRenderer {
+      __match_component: js(module: "MarkdownUserNameRenderer.react")
+      __match_fragment: js(module: "MarkdownUserNameRenderer_name$normalization.graphql")
+    }
+  }
+  plainNameRenderer: nameRenderer(supported: ["PlainUserNameRenderer"]) {
+    ...PlainUserNameRenderer_name
+    ... on PlainUserNameRenderer {
+      __match_component: js(module: "PlainUserNameRenderer.react")
+      __match_fragment: js(module: "PlainUserNameRenderer_name$normalization.graphql")
+    }
+  }
+}
+
+fragment PlainUserNameRenderer_name on PlainUserNameRenderer {
+  plaintext
+  data {
+    text
+  }
+}
+
+fragment MarkdownUserNameRenderer_name on MarkdownUserNameRenderer {
+  markdown
+  data {
+    markup
+  }
+}
+
+`;
+
+exports[`FlattenTransform matches expected output: match-field-overlap.graphql 1`] = `
+~~~~~~~~~~ INPUT ~~~~~~~~~~
+fragment NameRendererFragment on User {
+  id
+  nameRenderer @match {
+    ...PlainUserNameRenderer_name @module(name: "PlainUserNameRenderer.react")
+    ...MarkdownUserNameRenderer_name
+      @module(name: "MarkdownUserNameRenderer.react")
+  }
+  ... on User {
+    # identical to above
+    nameRenderer @match {
+      ...PlainUserNameRenderer_name @module(name: "PlainUserNameRenderer.react")
+      ...MarkdownUserNameRenderer_name
+        @module(name: "MarkdownUserNameRenderer.react")
+    }
+  }
+}
+
+fragment PlainUserNameRenderer_name on PlainUserNameRenderer {
+  plaintext
+  data {
+    text
+  }
+}
+
+fragment MarkdownUserNameRenderer_name on MarkdownUserNameRenderer {
+  markdown
+  data {
+    markup
+  }
+}
+
+~~~~~~~~~~ OUTPUT ~~~~~~~~~~
+fragment NameRendererFragment on User {
+  id
+  nameRenderer(supported: ["PlainUserNameRenderer", "MarkdownUserNameRenderer"]) {
+    ...PlainUserNameRenderer_name
+    ... on PlainUserNameRenderer {
+      __match_component: js(module: "PlainUserNameRenderer.react")
+      __match_fragment: js(module: "PlainUserNameRenderer_name$normalization.graphql")
+    }
+    ...MarkdownUserNameRenderer_name
+    ... on MarkdownUserNameRenderer {
+      __match_component: js(module: "MarkdownUserNameRenderer.react")
+      __match_fragment: js(module: "MarkdownUserNameRenderer_name$normalization.graphql")
+    }
+  }
+}
+
+fragment PlainUserNameRenderer_name on PlainUserNameRenderer {
+  plaintext
+  data {
+    text
+  }
+}
+
+fragment MarkdownUserNameRenderer_name on MarkdownUserNameRenderer {
+  markdown
+  data {
+    markup
   }
 }
 
