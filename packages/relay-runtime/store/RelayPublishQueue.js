@@ -140,7 +140,7 @@ class RelayPublishQueue {
     operation: OperationDescriptor,
     {fieldPayloads, source}: RelayResponsePayload,
     updater?: ?SelectorStoreUpdater,
-    optimisticUpdate?: OptimisticUpdate,
+    optimisticUpdate?: OptimisticUpdate | null,
   ): void {
     const serverData = {
       kind: 'payload',
