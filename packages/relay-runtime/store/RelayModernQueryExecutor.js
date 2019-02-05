@@ -222,10 +222,6 @@ class Executor {
   }
 
   _processResponse(response: GraphQLResponse): void {
-    if (this._optimisticUpdate !== null) {
-      this._publishQueue.revertUpdate(this._optimisticUpdate);
-      this._optimisticUpdate = null;
-    }
     const payload = this._normalizeResponse(
       response,
       this._operation.root,
@@ -233,7 +229,8 @@ class Executor {
       [] /* path */,
     );
     this._processPayloadFollowups(payload);
-    this._publishQueue.commitPayload(this._operation, payload, this._updater);
+    this._publishQueue.commitPayload(this._operation, payload, this._updater, this._optimisticUpdate);
+    this._optimisticUpdate = null;
     this._publishQueue.run();
   }
 

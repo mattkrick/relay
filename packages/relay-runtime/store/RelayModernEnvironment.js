@@ -54,6 +54,7 @@ export type EnvironmentConfig = {|
   +network: Network,
   +store: Store,
   +missingFieldHandlers?: $ReadOnlyArray<MissingFieldHandler>,
+  +publishQueue?: RelayPublishQueue
 |};
 
 class RelayModernEnvironment implements Environment {
@@ -85,7 +86,7 @@ class RelayModernEnvironment implements Environment {
     }
     this._operationLoader = operationLoader;
     this._network = config.network;
-    this._publishQueue = new RelayPublishQueue(config.store, handlerProvider);
+    this._publishQueue = config.publishQueue || new RelayPublishQueue(config.store, handlerProvider);
     this._store = config.store;
     this.unstable_internal = RelayCore;
 
