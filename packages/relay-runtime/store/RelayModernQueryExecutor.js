@@ -221,19 +221,18 @@ class Executor {
     this._publishQueue.run();
   }
 
-  _processResponse(response: GraphQLResponse): void {
-    if (this._optimisticUpdate !== null) {
-      this._publishQueue.revertUpdate(this._optimisticUpdate);
-      this._optimisticUpdate = null;
-    }
-    const payload = this._normalizeResponse(
+  _processResponse(response: GraphQLResponseWithData): void {
+    const payload = normalizeResponse(
       response,
       this._operation.root,
       ROOT_TYPE,
       [] /* path */,
     );
+    this._incrementalPlaceholders.clear();
+    this._source.clear();
     this._processPayloadFollowups(payload);
-    this._publishQueue.commitPayload(this._operation, payload, this._updater);
+    this._publishQueue.commitPayload(this._operation, payload, this._updater, this._optimisticUpdate);
+    this._optimisticUpdate = null;
     this._publishQueue.run();
   }
 
