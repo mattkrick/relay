@@ -56,25 +56,26 @@ class RelayRecordSourceProxy implements RecordSourceProxy {
   }
 
   publishSource(
-    source: RecordSource,
+    source?: ?RecordSource,
     fieldPayloads?: ?Array<HandleFieldPayload>,
   ): void {
-    const dataIDs = source.getRecordIDs();
-    dataIDs.forEach(dataID => {
-      const status = source.getStatus(dataID);
-      if (status === EXISTENT) {
-        const sourceRecord = source.get(dataID);
-        if (sourceRecord) {
-          if (this.__mutator.getStatus(dataID) !== EXISTENT) {
-            this.create(dataID, RelayModernRecord.getType(sourceRecord));
+    if (source) {
+      const dataIDs = source.getRecordIDs();
+      dataIDs.forEach(dataID => {
+        const status = source.getStatus(dataID);
+        if (status === EXISTENT) {
+          const sourceRecord = source.get(dataID);
+          if (sourceRecord) {
+            if (this.__mutator.getStatus(dataID) !== EXISTENT) {
+              this.create(dataID, RelayModernRecord.getType(sourceRecord));
+            }
+            this.__mutator.copyFieldsFromRecord(sourceRecord, dataID);
           }
-          this.__mutator.copyFieldsFromRecord(sourceRecord, dataID);
+        } else if (status === NONEXISTENT) {
+          this.delete(dataID);
         }
-      } else if (status === NONEXISTENT) {
-        this.delete(dataID);
-      }
-    });
-
+      });
+    }
     if (fieldPayloads && fieldPayloads.length) {
       fieldPayloads.forEach(fieldPayload => {
         const handler =
