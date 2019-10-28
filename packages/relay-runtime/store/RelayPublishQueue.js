@@ -37,21 +37,29 @@ import type {
   StoreUpdater,
 } from './RelayStoreTypes';
 
-type PendingCommit = PendingRelayPayload | PendingRecordSource | PendingUpdater;
-type PendingRelayPayload = {|
-  +kind: 'payload',
-  +operation: OperationDescriptor,
-  +payload: RelayResponsePayload,
-  +updater: ?SelectorStoreUpdater,
-|};
-type PendingRecordSource = {|
-  +kind: 'source',
-  +source: RecordSource,
-|};
-type PendingUpdater = {|
-  +kind: 'updater',
-  +updater: StoreUpdater,
-|};
+type ClientPayload = {
+  kind: 'client',
+  updater: StoreUpdater
+}
+
+type OptimisticPayload = {
+  kind: 'optimistic',
+  updater: OptimisticUpdate
+}
+
+type ServerPayload = {
+  kind: 'payload',
+  payload: RelayResponsePayload,
+  operation: OperationDescriptor,
+  updater: SelectorStoreUpdater
+}
+
+type SourcePayload = {
+  kind: 'source',
+  source: RecordSource
+}
+
+type DataToCommit = ClientPayload | OptimisticPayload | ServerPayload | SourcePayload
 
 /**
  * Coordinates the concurrent modification of a `Store` due to optimistic and
@@ -64,103 +72,105 @@ type PendingUpdater = {|
  *   - Executes handlers for "handle" fields.
  *   - Reverts and reapplies pending optimistic updates.
  */
-class RelayPublishQueue implements PublishQueue {
-  _store: Store;
-  _handlerProvider: ?HandlerProvider;
-  _getDataID: GetDataID;
-
-  _hasStoreSnapshot: boolean;
-  // True if the next `run()` should apply the backup and rerun all optimistic
-  // updates performing a rebase.
-  _pendingBackupRebase: boolean;
-  // Payloads to apply or Sources to publish to the store with the next `run()`.
-  _pendingData: Set<PendingCommit>;
-  // Optimistic updaters to add with the next `run()`.
-  _pendingOptimisticUpdates: Set<OptimisticUpdate>;
-  // Optimistic updaters that are already added and might be rerun in order to
-  // rebase them.
-  _appliedOptimisticUpdates: Set<OptimisticUpdate>;
+class RelayPublishQueue {
+  _store: Store
+  _handlerProvider: HandlerProvider | null
+  _getDataID: GetDataID
+  // A "negative" of all applied updaters. It can be published to the store to
+  // undo them in order to re-apply
+  _hasStoreSnapshot: false
+  // The index of the most recent update applied to the backup to achieve the
+  // current store state
+  _currentStoreIdx: number
   // Garbage collection hold, should rerun gc on dispose
-  _gcHold: ?Disposable;
+  _gcHold: Disposable | null
+  // True if the next `run()` should apply the backup and rerun all updates
+  // performing a rebase.
+  _pendingBackupRebase: boolean
+  // All the updates to be processed in order. Updates before the first
+  // `optimistic` are committed. The rest are applied and logged to the backup
+  // in the event of a revert.
+  _pendingUpdates: Array<DataToCommit>
 
-  constructor(
-    store: Store,
-    handlerProvider?: ?HandlerProvider,
-    getDataID: GetDataID,
-  ) {
-    this._hasStoreSnapshot = false;
-    this._handlerProvider = handlerProvider || null;
-    this._pendingBackupRebase = false;
-    this._pendingData = new Set();
-    this._pendingOptimisticUpdates = new Set();
-    this._store = store;
-    this._appliedOptimisticUpdates = new Set();
-    this._gcHold = null;
-    this._getDataID = getDataID;
+  constructor (store: Store, handlerProvider: HandlerProvider | null, getDataID: GetDataID) {
+    this._hasStoreSnapshot = false
+    this._currentStoreIdx = 0
+    this._gcHold = null
+    this._getDataID = getDataID
+    this._handlerProvider = handlerProvider || null
+    this._pendingBackupRebase = false
+    this._pendingUpdates = []
+    this._store = store
   }
 
   /**
    * Schedule applying an optimistic updates on the next `run()`.
    */
-  applyUpdate(updater: OptimisticUpdate): void {
+  applyUpdate (updater: OptimisticUpdate): void {
     invariant(
-      !this._appliedOptimisticUpdates.has(updater) &&
-        !this._pendingOptimisticUpdates.has(updater),
-      'RelayPublishQueue: Cannot apply the same update function more than ' +
-        'once concurrently.',
-    );
-    this._pendingOptimisticUpdates.add(updater);
+      findUpdaterIdx(this._pendingUpdates, updater) === -1,
+      'LinearPublishQueue: Cannot apply the same update function more than ' + 'once concurrently.'
+    )
+    this._pendingUpdates.push({kind: 'optimistic', updater})
   }
 
   /**
    * Schedule reverting an optimistic updates on the next `run()`.
    */
-  revertUpdate(updater: OptimisticUpdate): void {
-    if (this._pendingOptimisticUpdates.has(updater)) {
-      // Reverted before it was applied
-      this._pendingOptimisticUpdates.delete(updater);
-    } else if (this._appliedOptimisticUpdates.has(updater)) {
-      this._pendingBackupRebase = true;
-      this._appliedOptimisticUpdates.delete(updater);
+  revertUpdate (updater: OptimisticUpdate): void {
+    const updateIdx = findUpdaterIdx(this._pendingUpdates, updater)
+    if (updateIdx !== -1) {
+      this._pendingBackupRebase = true
+      this._pendingUpdates.splice(updateIdx, 1)
     }
   }
 
   /**
    * Schedule a revert of all optimistic updates on the next `run()`.
    */
-  revertAll(): void {
-    this._pendingBackupRebase = true;
-    this._pendingOptimisticUpdates.clear();
-    this._appliedOptimisticUpdates.clear();
+  revertAll (): void {
+    this._pendingBackupRebase = true
+    this._pendingUpdates = this._pendingUpdates.filter((update) => update.kind !== 'optimistic')
   }
 
   /**
    * Schedule applying a payload to the store on the next `run()`.
+   * If provided, this will revert the corresponding optimistic update
    */
-  commitPayload(
+  commitPayload (
     operation: OperationDescriptor,
     payload: RelayResponsePayload,
-    updater?: ?SelectorStoreUpdater,
+    updater?: SelectorStoreUpdater | null,
+    optimisticUpdates?: OptimisticUpdate[] | null
   ): void {
-    this._pendingBackupRebase = true;
-    this._pendingData.add({
+    const serverData: ServerPayload = {
       kind: 'payload',
       operation,
       payload,
-      updater,
-    });
+      updater
+    }
+    if (optimisticUpdates) {
+      for (let ii = 0; ii < optimisticUpdates.length; ii++) {
+        const optimisticUpdate = optimisticUpdates[ii]
+        const updateIdx = findUpdaterIdx(this._pendingUpdates, optimisticUpdate)
+        if (updateIdx !== -1) {
+          this._pendingBackupRebase = true
+          this._pendingUpdates.splice(updateIdx, 1)
+        }
+      }
+    }
+    this._pendingUpdates.push(serverData)
   }
 
   /**
    * Schedule an updater to mutate the store on the next `run()` typically to
    * update client schema fields.
    */
-  commitUpdate(updater: StoreUpdater): void {
-    this._pendingBackupRebase = true;
-    this._pendingData.add({
-      kind: 'updater',
-      updater,
-    });
+  commitUpdate (updater: StoreUpdater): void {
+    this._pendingUpdates.push({
+      kind: 'client',
+      updater
+    })
   }
 
   /**
@@ -168,218 +178,162 @@ class RelayPublishQueue implements PublishQueue {
    * `run()`. As an example, to update the store with substituted fields that
    * are missing in the store.
    */
-  commitSource(source: RecordSource): void {
-    this._pendingBackupRebase = true;
-    this._pendingData.add({kind: 'source', source});
+  commitSource (source: RecordSource): void {
+    this._pendingUpdates.push({kind: 'source', source})
   }
 
   /**
    * Execute all queued up operations from the other public methods.
+   * There is a single queue for all updates to guarantee linearizability
    */
-  run(): $ReadOnlyArray<RequestDescriptor> {
+  run () {
     if (this._pendingBackupRebase) {
+      this._currentStoreIdx = 0
       if (this._hasStoreSnapshot) {
-        this._store.restore();
-        this._hasStoreSnapshot = false;
+        this._store.restore()
+        this._hasStoreSnapshot = false
       }
     }
-    this._commitData();
-    if (
-      this._pendingOptimisticUpdates.size ||
-      (this._pendingBackupRebase && this._appliedOptimisticUpdates.size)
-    ) {
-      if (!this._hasStoreSnapshot) {
-        this._store.snapshot();
-        this._hasStoreSnapshot = true;
-      }
-      this._applyUpdates();
-    }
-    this._pendingBackupRebase = false;
-    if (this._appliedOptimisticUpdates.size > 0) {
+    this._commitPendingUpdates()
+    this._applyPendingUpdates()
+
+    this._pendingBackupRebase = false
+    this._currentStoreIdx = this._pendingUpdates.length
+    return this._store.notify()
+  }
+
+  _applyPendingUpdates () {
+    if (this._currentStoreIdx < this._pendingUpdates.length) {
+      const updates = this._pendingUpdates.slice(this._currentStoreIdx)
+      this._handleUpdates(updates)
       if (!this._gcHold) {
-        this._gcHold = this._store.holdGC();
+        this._gcHold = this._store.holdGC()
       }
-    } else {
-      if (this._gcHold) {
-        this._gcHold.dispose();
-        this._gcHold = null;
-      }
-    }
-    return this._store.notify();
-  }
-
-  _publishSourceFromPayload(pendingPayload: PendingRelayPayload): void {
-    const {payload, operation, updater} = pendingPayload;
-    const {connectionEvents, source, fieldPayloads} = payload;
-    const combinedConnectionEvents = connectionEvents
-      ? connectionEvents.slice()
-      : [];
-    const mutator = new RelayRecordSourceMutator(
-      this._store.getSource(),
-      source,
-      combinedConnectionEvents,
-    );
-    const store = new RelayRecordSourceProxy(mutator, this._getDataID);
-    if (fieldPayloads && fieldPayloads.length) {
-      fieldPayloads.forEach(fieldPayload => {
-        const handler =
-          this._handlerProvider && this._handlerProvider(fieldPayload.handle);
-        invariant(
-          handler,
-          'RelayModernEnvironment: Expected a handler to be provided for ' +
-            'handle `%s`.',
-          fieldPayload.handle,
-        );
-        handler.update(store, fieldPayload);
-      });
-    }
-    if (updater) {
-      const selector = operation.fragment;
-      invariant(
-        selector != null,
-        'RelayModernEnvironment: Expected a selector to be provided with updater function.',
-      );
-      const selectorStore = new RelayRecordSourceSelectorProxy(
-        mutator,
-        store,
-        selector,
-      );
-      const selectorData = lookupSelector(source, selector);
-      updater(selectorStore, selectorData);
-    }
-    this._store.publish(source);
-    if (combinedConnectionEvents.length !== 0) {
-      this._store.publishConnectionEvents_UNSTABLE(
-        combinedConnectionEvents,
-        true,
-      );
+    } else if (this._gcHold && this._pendingUpdates.length === 0) {
+      this._gcHold.dispose()
+      this._gcHold = null
     }
   }
 
-  _commitData(): void {
-    if (!this._pendingData.size) {
-      return;
+  _commitPendingUpdates () {
+    const firstOptimisticIdx = this._pendingUpdates.findIndex(({kind}) => kind === 'optimistic')
+    const endIdx = firstOptimisticIdx === -1 ? this._pendingUpdates.length : firstOptimisticIdx
+    if (endIdx > 0) {
+      const updatesToCommit = this._pendingUpdates.splice(0, endIdx)
+      this._handleUpdates(updatesToCommit, true)
     }
-    this._pendingData.forEach(data => {
-      if (data.kind === 'payload') {
-        this._publishSourceFromPayload(data);
-      } else if (data.kind === 'source') {
-        const source = data.source;
-        this._store.publish(source);
-      } else {
-        const updater = data.updater;
-        const sink = RelayRecordSource.create();
-        const connectionEvents = [];
-        const mutator = new RelayRecordSourceMutator(
-          this._store.getSource(),
-          sink,
-          connectionEvents,
-        );
-        const store = new RelayRecordSourceProxy(mutator, this._getDataID);
-        ErrorUtils.applyWithGuard(
-          updater,
-          null,
-          [store],
-          null,
-          'RelayPublishQueue:commitData',
-        );
-        this._store.publish(sink);
-        if (connectionEvents.length !== 0) {
-          this._store.publishConnectionEvents_UNSTABLE(connectionEvents, true);
-        }
-      }
-    });
-    this._pendingData.clear();
   }
 
-  _applyUpdates(): void {
-    const sink = RelayRecordSource.create();
-    const combinedConnectionEvents = [];
+  _handleUpdates (updates: DataToCommit[], final?: boolean) {
+    if (!final && !this._hasStoreSnapshot) {
+      this._store.snapshot()
+      this._hasStoreSnapshot = true
+    }
+    const sink = RelayRecordSource.create()
+    const combinedConnectionEvents = []
     const mutator = new RelayRecordSourceMutator(
       this._store.getSource(),
       sink,
-      combinedConnectionEvents,
-    );
-    const store = new RelayRecordSourceProxy(
-      mutator,
-      this._getDataID,
-      this._handlerProvider,
-    );
-
-    const processUpdate = optimisticUpdate => {
-      if (optimisticUpdate.storeUpdater) {
-        const {storeUpdater} = optimisticUpdate;
-        ErrorUtils.applyWithGuard(
-          storeUpdater,
-          null,
-          [store],
-          null,
-          'RelayPublishQueue:applyUpdates',
-        );
-      } else {
-        const {operation, payload, updater} = optimisticUpdate;
-        const {connectionEvents, source, fieldPayloads} = payload;
-        const selectorStore = new RelayRecordSourceSelectorProxy(
-          mutator,
-          store,
-          operation.fragment,
-        );
-        let selectorData;
-        if (source) {
-          store.publishSource(source, fieldPayloads);
-          selectorData = lookupSelector(source, operation.fragment);
-        }
-        if (connectionEvents) {
-          combinedConnectionEvents.push(...connectionEvents);
-        }
-        if (updater) {
+      combinedConnectionEvents
+    )
+    const store = new RelayRecordSourceProxy(mutator, this._getDataID, this._handlerProvider)
+    for (let ii = 0; ii < updates.length; ii++) {
+      const update = updates[ii]
+      switch (update.kind) {
+        case 'client':
           ErrorUtils.applyWithGuard(
-            updater,
+            update.updater,
             null,
-            [selectorStore, selectorData],
+            [store],
             null,
-            'RelayPublishQueue:applyUpdates',
-          );
-        }
+            'LinearPublishQueue:applyUpdates'
+          )
+          break
+        case 'optimistic':
+          applyOptimisticUpdate(update.updater, combinedConnectionEvents, store, this._getDataID)
+          break
+        case 'payload':
+          combinedConnectionEvents.push(...update.payload.connectionEvents || [])
+          applyServerPayloadUpdate(update, store)
+          break
+        case 'source':
+          store.publishSource(update.source)
+          break
       }
-    };
-
-    // rerun all updaters in case we are running a rebase
-    if (this._pendingBackupRebase && this._appliedOptimisticUpdates.size) {
-      this._appliedOptimisticUpdates.forEach(processUpdate);
     }
-
-    // apply any new updaters
-    if (this._pendingOptimisticUpdates.size) {
-      this._pendingOptimisticUpdates.forEach(optimisticUpdate => {
-        processUpdate(optimisticUpdate);
-        this._appliedOptimisticUpdates.add(optimisticUpdate);
-      });
-      this._pendingOptimisticUpdates.clear();
-    }
-
-    this._store.publish(sink);
+    this._store.publish(sink)
     if (combinedConnectionEvents.length !== 0) {
       this._store.publishConnectionEvents_UNSTABLE(
         combinedConnectionEvents,
-        false,
+        final,
       );
     }
   }
 }
 
-function lookupSelector(
-  source: RecordSource,
-  selector: SingularReaderSelector,
-): ?SelectorData {
-  const selectorData = RelayReader.read(source, selector).data;
-  if (__DEV__) {
-    const deepFreeze = require('../util/deepFreeze');
-    if (selectorData) {
-      deepFreeze(selectorData);
+function applyOptimisticUpdate (optimisticUpdate: any, combinedConnectionEvents: any[], store: any, getDataID: any) {
+  if (optimisticUpdate.storeUpdater) {
+    const {storeUpdater} = optimisticUpdate
+    ErrorUtils.applyWithGuard(storeUpdater, null, [store], null, 'LinearPublishQueue:applyUpdates')
+  } else {
+    const {operation, payload, updater} = optimisticUpdate
+    const {connectionEvents, source, fieldPayloads} = payload
+    const selectorStore = new RelayRecordSourceSelectorProxy(
+      store.__mutator,
+      store,
+      operation.fragment,
+    )
+    let selectorData
+    if (source) {
+      store.publishSource(source, fieldPayloads)
+      selectorData = lookupSelector(source, operation.fragment)
+    }
+    if (connectionEvents) {
+      combinedConnectionEvents.push(...connectionEvents)
+    }
+    if (updater) {
+      ErrorUtils.applyWithGuard(
+        updater,
+        null,
+        [selectorStore, selectorData],
+        null,
+        'RelayPublishQueue:applyUpdates',
+      )
     }
   }
-  return selectorData;
+}
+
+function applyServerPayloadUpdate (pendingPayload: ServerPayload, store: any): void {
+  const {payload, operation, updater} = pendingPayload
+  const {source, fieldPayloads} = payload
+  store.publishSource(source, fieldPayloads)
+  if (updater) {
+    const selector = operation.fragment
+    invariant(
+      selector != null,
+      'RelayModernEnvironment: Expected a selector to be provided with updater function.'
+    )
+    const selectorData = lookupSelector(source, selector, operation)
+    const selectorStore = new RelayRecordSourceSelectorProxy(store.__mutator, store, selector)
+    updater(selectorStore, selectorData)
+  }
+}
+
+function findUpdaterIdx (
+  updates: Array<DataToCommit>,
+  updater: StoreUpdater | OptimisticUpdate
+): number {
+  return updates.findIndex((update) => update.updater === updater)
+}
+
+type ReaderSelector = any
+
+function lookupSelector (
+  source: RecordSource,
+  selector: ReaderSelector,
+  owner: OperationDescriptor | null
+): SelectorData | null {
+  return RelayReader.read(source, selector, owner).data
 }
 
 module.exports = RelayPublishQueue;

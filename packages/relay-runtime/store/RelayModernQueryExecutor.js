@@ -407,12 +407,6 @@ class Executor {
   }
 
   _processResponse(response: GraphQLResponseWithData): void {
-    if (this._optimisticUpdates !== null) {
-      this._optimisticUpdates.forEach(update =>
-        this._publishQueue.revertUpdate(update),
-      );
-      this._optimisticUpdates = null;
-    }
     const payload = normalizeResponse(
       response,
       this._operation.root,
@@ -422,7 +416,8 @@ class Executor {
     this._incrementalPayloadsPending = false;
     this._incrementalResults.clear();
     this._source.clear();
-    this._publishQueue.commitPayload(this._operation, payload, this._updater);
+    this._publishQueue.commitPayload(this._operation, payload, this._updater, this._optimisticUpdates);
+    this._optimisticUpdates = null
     const updatedOwners = this._publishQueue.run();
     this._updateOperationTracker(updatedOwners);
     this._processPayloadFollowups(payload);
