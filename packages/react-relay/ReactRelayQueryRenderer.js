@@ -373,13 +373,22 @@ function fetchQueryAndComputeStateFromProps(
         operation,
         props.fetchPolicy,
       );
-      const querySnapshot = queryFetcher.fetch({
+      const callFetch = props.fetchPolicy !== 'store-or-network' || !storeSnapshot
+      const querySnapshot = callFetch ? queryFetcher.fetch({
         cacheConfig: props.cacheConfig,
         environment: genericEnvironment,
         onDataChange: retryCallbacks.handleDataChange,
         operation,
-      });
+      }) : null;
 
+      if (!callFetch) {
+        queryFetcher._fetchOptions = {
+          cacheConfig: props.cacheConfig,
+          environment: props.environment,
+          onDataChange: retryCallbacks.handleDataChange,
+          operation
+        }
+      }
       // Use network data first, since it may be fresher
       const snapshot = querySnapshot || storeSnapshot;
 
