@@ -11,9 +11,9 @@
 
 'use strict';
 
+const CompilerContext = require('../../core/CompilerContext');
 const FieldHandleTransform = require('../FieldHandleTransform');
-const GraphQLCompilerContext = require('../../core/GraphQLCompilerContext');
-const GraphQLIRPrinter = require('../../core/GraphQLIRPrinter');
+const IRPrinter = require('../../core/IRPrinter');
 const Schema = require('../../core/Schema');
 
 const {
@@ -28,11 +28,11 @@ describe('FieldHandleTransform', () => {
     text => {
       const {definitions} = parseGraphQLText(TestSchema, text);
       const compilerSchema = Schema.DEPRECATED__create(TestSchema);
-      return new GraphQLCompilerContext(compilerSchema)
+      return new CompilerContext(compilerSchema)
         .addAll(definitions)
         .applyTransforms([FieldHandleTransform.transform])
         .documents()
-        .map(doc => GraphQLIRPrinter.print(compilerSchema, doc))
+        .map(doc => IRPrinter.print(compilerSchema, doc))
         .join('\n');
     },
   );

@@ -10,10 +10,7 @@
 
 'use strict';
 
-const {
-  createCompilerError,
-  createUserError,
-} = require('../core/RelayCompilerError');
+const {createCompilerError, createUserError} = require('../core/CompilerError');
 const {
   ConnectionInterface,
   getStorageKey,
@@ -36,7 +33,7 @@ import type {
   ConnectionField,
   InlineFragment,
   LocalArgumentDefinition,
-} from '../core/GraphQLIR';
+} from '../core/IR';
 import type {Schema, TypeID} from '../core/Schema';
 import type {
   NormalizationArgument,
@@ -57,7 +54,7 @@ import type {
 /**
  * @public
  *
- * Converts a GraphQLIR node into a plain JS object representation that can be
+ * Converts an IR node into a plain JS object representation that can be
  * used at runtime.
  */
 declare function generate(schema: Schema, node: Root): NormalizationOperation;

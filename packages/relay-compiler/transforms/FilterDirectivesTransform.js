@@ -10,18 +10,16 @@
 
 'use strict';
 
-const GraphQLIRTransformer = require('../core/GraphQLIRTransformer');
+const IRTransformer = require('../core/IRTransformer');
 
-import type GraphQLCompilerContext from '../core/GraphQLCompilerContext';
-import type {Directive} from '../core/GraphQLIR';
+import type CompilerContext from '../core/CompilerContext';
+import type {Directive} from '../core/IR';
 
 /**
  * A transform that removes any directives that were not present in the
  * server schema.
  */
-function filterDirectivesTransform(
-  context: GraphQLCompilerContext,
-): GraphQLCompilerContext {
+function filterDirectivesTransform(context: CompilerContext): CompilerContext {
   const schemaDirectives = new Set(
     context
       .getSchema()
@@ -35,7 +33,7 @@ function filterDirectivesTransform(
     }
     return null;
   };
-  return GraphQLIRTransformer.transform(context, {
+  return IRTransformer.transform(context, {
     Directive: visitDirective,
   });
 }

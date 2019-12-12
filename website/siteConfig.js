@@ -132,7 +132,7 @@ const users = [
   },
   {
     caption: 'Quanto',
-    image: '/relay/img/logos/quanto.png',
+    image: '/img/logos/quanto.png',
     infoLink: 'https://www.contaquanto.com.br/',
     pinned: false,
   },
@@ -170,6 +170,7 @@ const siteConfig = {
   headerIcon: 'img/relay-white.svg',
   footerIcon: 'img/relay.svg',
   favicon: 'img/favicon.png',
+  twitterImage: 'img/relay.png',
   colors: {
     primaryColor: '#f26b00',
     secondaryColor: '#f26b00',
@@ -193,6 +194,7 @@ const siteConfig = {
   enableUpdateBy: true,
   docsSideNavCollapsible: true,
   scripts: ['/js/redirect.js'],
+  onPageNav: 'separate',
 };
 
 module.exports = siteConfig;

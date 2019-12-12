@@ -11,8 +11,8 @@
 
 'use strict';
 
-const GraphQLCompilerContext = require('../GraphQLCompilerContext');
-const GraphQLIRPrinter = require('../GraphQLIRPrinter');
+const CompilerContext = require('../CompilerContext');
+const IRPrinter = require('../IRPrinter');
 const RelayParser = require('../RelayParser');
 const Schema = require('../Schema');
 
@@ -21,14 +21,14 @@ const {
   generateTestsFromFixtures,
 } = require('relay-test-utils-internal');
 
-describe('GraphQLIRPrinter', () => {
+describe('IRPrinter', () => {
   generateTestsFromFixtures(`${__dirname}/fixtures/printer`, text => {
     const compilerSchema = Schema.DEPRECATED__create(TestSchema);
     const ast = RelayParser.parse(compilerSchema, text);
-    const context = new GraphQLCompilerContext(compilerSchema).addAll(ast);
+    const context = new CompilerContext(compilerSchema).addAll(ast);
     const documents = [];
     context.forEachDocument(doc => {
-      documents.push(GraphQLIRPrinter.print(compilerSchema, doc));
+      documents.push(IRPrinter.print(compilerSchema, doc));
     });
     return documents.join('\n');
   });

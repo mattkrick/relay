@@ -9,13 +9,12 @@
 
 'use strict';
 
-const RelayTestSchema = require('./RelayTestSchema');
-
 const parseGraphQLText = require('./parseGraphQLText');
 
+const {TestSchema} = require('./TestSchema');
 const {
   CodeMarker,
-  GraphQLCompilerContext,
+  CompilerContext,
   IRTransforms,
   compileRelayArtifacts,
   transformASTSchema,
@@ -37,7 +36,7 @@ function generateWithTransforms(
 ): {[key: string]: GeneratedNode} {
   return generate(
     text,
-    RelayTestSchema,
+    TestSchema,
     {
       commonTransforms: transforms || [],
       fragmentTransforms: [],
@@ -59,12 +58,7 @@ function generateAndCompile(
   schema?: ?GraphQLSchema,
   moduleMap?: ?{[string]: mixed},
 ): {[key: string]: GeneratedNode} {
-  return generate(
-    text,
-    schema || RelayTestSchema,
-    IRTransforms,
-    moduleMap ?? null,
-  );
+  return generate(text, schema || TestSchema, IRTransforms, moduleMap ?? null);
 }
 
 function generate(
@@ -78,7 +72,7 @@ function generate(
     relaySchema,
     text,
   );
-  const compilerContext = new GraphQLCompilerContext(
+  const compilerContext = new CompilerContext(
     Schema.DEPRECATED__create(schema, extendedSchema),
   ).addAll(definitions);
   const documentMap = {};

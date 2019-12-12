@@ -18,12 +18,12 @@ const RelayRecordSourceProxy = require('../mutations/RelayRecordSourceProxy');
 const RelayRecordSourceSelectorProxy = require('../mutations/RelayRecordSourceSelectorProxy');
 
 const invariant = require('invariant');
+const warning = require('warning');
 
 import type {HandlerProvider} from '../handlers/RelayDefaultHandlerProvider';
 import type {Disposable} from '../util/RelayRuntimeTypes';
 import type {GetDataID} from './RelayResponseNormalizer';
 import type {
-  MutableRecordSource,
   OperationDescriptor,
   OptimisticUpdate,
   PublishQueue,
@@ -82,6 +82,7 @@ class RelayPublishQueue implements PublishQueue {
   _appliedOptimisticUpdates: Set<OptimisticUpdate>;
   // Garbage collection hold, should rerun gc on dispose
   _gcHold: ?Disposable;
+  _isRunning: ?boolean;
 
   constructor(
     store: Store,
@@ -177,6 +178,15 @@ class RelayPublishQueue implements PublishQueue {
    * Execute all queued up operations from the other public methods.
    */
   run(): $ReadOnlyArray<RequestDescriptor> {
+    if (__DEV__) {
+      warning(
+        this._isRunning !== true,
+        'A store update was detected within another store update. Please ' +
+          'make sure new store updates aren’t being executed within an ' +
+          'updater function for a different update.',
+      );
+      this._isRunning = true;
+    }
     if (this._pendingBackupRebase) {
       if (this._hasStoreSnapshot) {
         this._store.restore();
@@ -204,6 +214,9 @@ class RelayPublishQueue implements PublishQueue {
         this._gcHold.dispose();
         this._gcHold = null;
       }
+    }
+    if (__DEV__) {
+      this._isRunning = false;
     }
     return this._store.notify();
   }

@@ -12,8 +12,8 @@
 'use strict';
 
 const ApplyFragmentArgumentTransform = require('../ApplyFragmentArgumentTransform');
-const GraphQLCompilerContext = require('../../core/GraphQLCompilerContext');
-const GraphQLIRPrinter = require('../../core/GraphQLIRPrinter');
+const CompilerContext = require('../../core/CompilerContext');
+const IRPrinter = require('../../core/IRPrinter');
 const RelayParser = require('../../core/RelayParser');
 const Schema = require('../../core/Schema');
 
@@ -28,11 +28,11 @@ describe('ApplyFragmentArgumentTransform', () => {
     text => {
       const compilerSchema = Schema.DEPRECATED__create(TestSchema);
       const ast = RelayParser.parse(compilerSchema, text);
-      return new GraphQLCompilerContext(compilerSchema)
+      return new CompilerContext(compilerSchema)
         .addAll(ast)
         .applyTransforms([ApplyFragmentArgumentTransform.transform])
         .documents()
-        .map(doc => GraphQLIRPrinter.print(compilerSchema, doc))
+        .map(doc => IRPrinter.print(compilerSchema, doc))
         .join('\n');
     },
   );

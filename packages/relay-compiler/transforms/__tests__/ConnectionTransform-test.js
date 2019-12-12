@@ -11,9 +11,9 @@
 
 'use strict';
 
+const CompilerContext = require('../../core/CompilerContext');
 const ConnectionTransform = require('../ConnectionTransform');
-const GraphQLCompilerContext = require('../../core/GraphQLCompilerContext');
-const GraphQLIRPrinter = require('../../core/GraphQLIRPrinter');
+const IRPrinter = require('../../core/IRPrinter');
 const Schema = require('../../core/Schema');
 
 const {transformASTSchema} = require('../../core/ASTConvert');
@@ -34,13 +34,13 @@ generateTestsFromFixtures(
       TestSchema,
       extendedSchema,
     );
-    return new GraphQLCompilerContext(compilerSchema)
+    return new CompilerContext(compilerSchema)
       .addAll(definitions)
       .applyTransforms([ConnectionTransform.transform])
       .documents()
       .map(
         doc =>
-          GraphQLIRPrinter.print(compilerSchema, doc) +
+          IRPrinter.print(compilerSchema, doc) +
           '# Metadata:\n' +
           JSON.stringify(doc.metadata ?? null, null, 2),
       )

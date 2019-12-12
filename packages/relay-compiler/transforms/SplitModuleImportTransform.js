@@ -10,17 +10,17 @@
 
 'use strict';
 
-const IRTransformer = require('../core/GraphQLIRTransformer');
+const IRTransformer = require('../core/IRTransformer');
 
 const getNormalizationOperationName = require('../core/getNormalizationOperationName');
 
-import type CompilerContext from '../core/GraphQLCompilerContext';
+import type CompilerContext from '../core/CompilerContext';
 import type {
   LinkedField,
   InlineFragment,
   ModuleImport,
   SplitOperation,
-} from '../core/GraphQLIR';
+} from '../core/IR';
 import type {CompositeTypeID} from '../core/Schema';
 
 type State = {|

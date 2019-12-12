@@ -41,7 +41,7 @@ type Query {
   usernames(names: [String!]!): [Actor]
   viewer: Viewer
   _mutation: Mutation
-  relay_early_flush: [JSDependency!]!
+  relay_early_flush(query_name: String): [JSDependency!]!
 }
 
 interface MaybeNodeInterface {
@@ -252,7 +252,8 @@ type Comment implements Node {
   message: Text
   name: String
   profilePicture(size: [Int], preset: PhotoSize): Image
-  # This is added in RelayTestSchema
+  # This is added in TestSchema.js
+  #
   # profilePicture2(
   #   size: [Int],
   #   preset: PhotoSize,
@@ -608,6 +609,7 @@ type Page implements Node & Actor {
   username: String
   viewerSavedState: String
   nameWithArgs(capitalize: Boolean!): String
+  nameWithDefaultArgs(capitalize: Boolean! = false): String
 }
 
 type PageInfo {
@@ -875,6 +877,12 @@ type MarkdownUserNameData {
 
 type CustomNameRenderer {
   customField: String
+  user: User
+}
+
+type PlainUserRenderer {
+  user: User
+  js(module: String!, id: String): JSDependency
 }
 
 union UserNameRenderer =
@@ -955,6 +963,7 @@ type User implements Named & Node & Actor & HasJsField {
   websites: [String]
   username: String
   viewerSavedState: String
+  plainUserRenderer: PlainUserRenderer
 }
 
 enum NameRendererContext {
@@ -1052,7 +1061,8 @@ enum TopLevelCommentsOrdering {
   toplevel
 }
 
-# This is added in RelayTestSchema
+# This is added in TestSchema.js
+#
 # enum CropPosition {
 #   TOP
 #   CENTER

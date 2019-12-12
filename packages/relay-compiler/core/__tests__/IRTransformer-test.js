@@ -11,14 +11,14 @@
 
 'use strict';
 
-const GraphQLCompilerContext = require('../GraphQLCompilerContext');
-const GraphQLIRTransformer = require('../GraphQLIRTransformer');
+const CompilerContext = require('../CompilerContext');
+const IRTransformer = require('../IRTransformer');
 const Schema = require('../Schema');
 
 const {transformASTSchema} = require('../ASTConvert');
 const {TestSchema, parseGraphQLText} = require('relay-test-utils-internal');
 
-describe('GraphQLIRTransformer', () => {
+describe('IRTransformer', () => {
   it('visits all node types', () => {
     const {definitions} = parseGraphQLText(
       transformASTSchema(TestSchema, [
@@ -65,7 +65,7 @@ describe('GraphQLIRTransformer', () => {
    }
  `,
     );
-    const context = new GraphQLCompilerContext(
+    const context = new CompilerContext(
       Schema.DEPRECATED__create(TestSchema),
     ).addAll(definitions);
 
@@ -99,7 +99,7 @@ describe('GraphQLIRTransformer', () => {
     astKinds.forEach(kind => {
       visitors[kind] = createRecorder(kind);
     });
-    GraphQLIRTransformer.transform(context, visitors, node => {
+    IRTransformer.transform(context, visitors, node => {
       sequence.push(`init state: ${node.kind} ${node.name}`);
       return {};
     });

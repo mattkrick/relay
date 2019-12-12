@@ -12,11 +12,9 @@
 
 const invariant = require('invariant');
 
-const {eachWithCombinedError} = require('./RelayCompilerError');
+const {eachWithCombinedError} = require('./CompilerError');
 
-import type GraphQLCompilerContext, {
-  CompilerContextDocument,
-} from './GraphQLCompilerContext';
+import type CompilerContext, {CompilerContextDocument} from './CompilerContext';
 import type {
   Argument,
   ClientExtension,
@@ -41,7 +39,7 @@ import type {
   SplitOperation,
   Stream,
   Variable,
-} from './GraphQLIR';
+} from './IR';
 
 type NodeVisitor<S> = {|
   Argument?: NodeVisitorFunction<Argument, S>,
@@ -77,7 +75,7 @@ type NodeVisitorFunction<N: IR, S> = (node: N, state: S) => void;
  *
  */
 function validate<S>(
-  context: GraphQLCompilerContext,
+  context: CompilerContext,
   visitor: NodeVisitor<S>,
   stateInitializer: void | (CompilerContextDocument => ?S),
 ): void {
@@ -98,17 +96,17 @@ function validate<S>(
  * @internal
  */
 class Validator<S> {
-  _context: GraphQLCompilerContext;
+  _context: CompilerContext;
   _states: Array<S>;
   _visitor: NodeVisitor<S>;
 
-  constructor(context: GraphQLCompilerContext, visitor: NodeVisitor<S>) {
+  constructor(context: CompilerContext, visitor: NodeVisitor<S>) {
     this._context = context;
     this._states = [];
     this._visitor = visitor;
   }
 
-  getContext(): GraphQLCompilerContext {
+  getContext(): CompilerContext {
     return this._context;
   }
 
@@ -206,11 +204,7 @@ class Validator<S> {
         break;
       default:
         (prevNode: empty);
-        invariant(
-          false,
-          'GraphQLIRValidator: Unknown kind `%s`.',
-          prevNode.kind,
-        );
+        invariant(false, 'IRValidator: Unknown kind `%s`.', prevNode.kind);
     }
   }
 
@@ -227,7 +221,7 @@ class Validator<S> {
         }
         invariant(
           Array.isArray(prevItems),
-          'GraphQLIRValidator: Expected data for `%s` to be an array, got `%s`.',
+          'IRValidator: Expected data for `%s` to be an array, got `%s`.',
           key,
           prevItems,
         );
@@ -246,7 +240,7 @@ class Validator<S> {
   _getState(): S {
     invariant(
       this._states.length,
-      'GraphQLIRValidator: Expected a current state to be set but found none. ' +
+      'IRValidator: Expected a current state to be set but found none. ' +
         'This is usually the result of mismatched number of pushState()/popState() ' +
         'calls.',
     );

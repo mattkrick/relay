@@ -14,9 +14,9 @@ const NodeQueryGenerator = require('./NodeQueryGenerator');
 const QueryQueryGenerator = require('./QueryQueryGenerator');
 const ViewerQueryGenerator = require('./ViewerQueryGenerator');
 
-const {createUserError} = require('../../core/RelayCompilerError');
+const {createUserError} = require('../../core/CompilerError');
 
-import type {Fragment, Root} from '../../core/GraphQLIR';
+import type {Fragment, Root} from '../../core/IR';
 import type {Schema} from '../../core/Schema';
 
 export type RefetchRoot = {|

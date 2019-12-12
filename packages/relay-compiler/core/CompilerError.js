@@ -12,7 +12,7 @@
 
 const {GraphQLError} = require('graphql');
 
-import type {Location} from './GraphQLIR';
+import type {Location} from './IR';
 import type {ASTNode, Source, SourceLocation} from 'graphql';
 
 // Combined results of multiple user errors
@@ -168,9 +168,7 @@ function printLocations(locations: $ReadOnlyArray<Location>): Array<string> {
       default: {
         (sourceLocation: empty);
         throw createCompilerError(
-          `RelayCompilerError: cannot print location '${String(
-            sourceLocation,
-          )}'.`,
+          `CompilerError: cannot print location '${String(sourceLocation)}'.`,
         );
       }
     }

@@ -11,8 +11,8 @@
 
 'use strict';
 
-const GraphQLCompilerContext = require('../GraphQLCompilerContext');
-const GraphQLIRPrinter = require('../GraphQLIRPrinter');
+const CompilerContext = require('../CompilerContext');
+const IRPrinter = require('../IRPrinter');
 const Schema = require('../Schema');
 
 const filterContextForNode = require('../filterContextForNode');
@@ -30,9 +30,7 @@ describe('filterContextForNode', () => {
     const {definitions} = parseGraphQLText(TestSchema, text);
     const compilerSchema = Schema.DEPRECATED__create(TestSchema);
 
-    const context = new GraphQLCompilerContext(compilerSchema).addAll(
-      definitions,
-    );
+    const context = new CompilerContext(compilerSchema).addAll(definitions);
     const printerContext = filterContextForNode(
       // $FlowFixMe - null or undefined is incompatible with union type
       context.get(MAIN_QUERY_NAME),
@@ -40,7 +38,7 @@ describe('filterContextForNode', () => {
     );
     return printerContext
       .documents()
-      .map(doc => GraphQLIRPrinter.print(compilerSchema, doc))
+      .map(doc => IRPrinter.print(compilerSchema, doc))
       .join('\n');
   });
 });

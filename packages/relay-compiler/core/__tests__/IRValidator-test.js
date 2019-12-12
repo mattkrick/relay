@@ -11,16 +11,16 @@
 
 'use strict';
 
-const GraphQLCompilerContext = require('../GraphQLCompilerContext');
-const GraphQLIRTransformer = require('../GraphQLIRTransformer');
-const GraphQLIRValidator = require('../GraphQLIRValidator');
+const CompilerContext = require('../CompilerContext');
+const IRTransformer = require('../IRTransformer');
+const IRValidator = require('../IRValidator');
 const Schema = require('../Schema');
 
 const {transformASTSchema} = require('../ASTConvert');
 const {TestSchema, parseGraphQLText} = require('relay-test-utils-internal');
 
-describe('GraphQLIRValidator', () => {
-  it('should have same behavior as the GraphQLIRTransformer', () => {
+describe('IRValidator', () => {
+  it('should have same behavior as the IRTransformer', () => {
     const {definitions} = parseGraphQLText(
       transformASTSchema(TestSchema, [
         'directive @test on FRAGMENT_DEFINITION',
@@ -66,7 +66,7 @@ describe('GraphQLIRValidator', () => {
    }
  `,
     );
-    const context = new GraphQLCompilerContext(
+    const context = new CompilerContext(
       Schema.DEPRECATED__create(TestSchema),
     ).addAll(definitions);
 
@@ -110,8 +110,8 @@ describe('GraphQLIRValidator', () => {
       expect(Array.from(astKinds).sort()).toEqual(Array.from(seenKinds).sort());
       return sequence;
     }
-    const validatorSeq = recordSequnce(GraphQLIRValidator.validate);
-    const transformerSeq = recordSequnce(GraphQLIRTransformer.transform);
+    const validatorSeq = recordSequnce(IRValidator.validate);
+    const transformerSeq = recordSequnce(IRTransformer.transform);
     expect(validatorSeq).toEqual(transformerSeq);
   });
 });

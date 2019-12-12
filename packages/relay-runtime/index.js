@@ -33,6 +33,7 @@ const RelayOperationTracker = require('./store/RelayOperationTracker');
 const RelayProfiler = require('./util/RelayProfiler');
 const RelayQueryResponseCache = require('./network/RelayQueryResponseCache');
 const RelayRecordSource = require('./store/RelayRecordSource');
+const RelayReplaySubject = require('./util/RelayReplaySubject');
 const RelayStoreUtils = require('./store/RelayStoreUtils');
 const ViewerPattern = require('./store/ViewerPattern');
 
@@ -40,6 +41,7 @@ const applyOptimisticMutation = require('./mutations/applyOptimisticMutation');
 const commitLocalUpdate = require('./mutations/commitLocalUpdate');
 const commitMutation = require('./mutations/commitMutation');
 const createFragmentSpecResolver = require('./store/createFragmentSpecResolver');
+const createPayloadFor3DField = require('./util/createPayloadFor3DField');
 const createRelayContext = require('./store/createRelayContext');
 const deepFreeze = require('./util/deepFreeze');
 const fetchQuery = require('./query/fetchQuery');
@@ -47,6 +49,7 @@ const fetchQueryInternal = require('./query/fetchQueryInternal');
 const getFragmentIdentifier = require('./util/getFragmentIdentifier');
 const getFragmentSpecIdentifier = require('./util/getFragmentSpecIdentifier');
 const getRelayHandleKey = require('./util/getRelayHandleKey');
+const getRequestIdentifier = require('./util/getRequestIdentifier');
 const isPromise = require('./util/isPromise');
 const isRelayModernEnvironment = require('./store/isRelayModernEnvironment');
 const isScalarAndEqual = require('./util/isScalarAndEqual');
@@ -115,7 +118,6 @@ export type {
   FragmentSpecResolver,
   HandleFieldPayload,
   IEnvironment,
-  Local3DPayload,
   LogEvent,
   LogFunction,
   MissingFieldHandler,
@@ -189,6 +191,7 @@ export type {
   OperationType,
   Variables,
 } from './util/RelayRuntimeTypes';
+export type {Local3DPayload} from './util/createPayloadFor3DField';
 
 // As early as possible, check for the existence of the JavaScript globals which
 // Relay Runtime relies upon, and produce a clear message if they do not exist.
@@ -218,6 +221,7 @@ module.exports = {
   QueryResponseCache: RelayQueryResponseCache,
   RecordSource: RelayRecordSource,
   Record: RelayModernRecord,
+  ReplaySubject: RelayReplaySubject,
   Store: RelayModernStore,
 
   areEqualSelectors: RelayModernSelector.areEqualSelectors,
@@ -238,6 +242,7 @@ module.exports = {
   getPluralSelector: RelayModernSelector.getPluralSelector,
   getRefetchableFragment: RelayModernGraphQLTag.getRefetchableFragment,
   getRequest: RelayModernGraphQLTag.getRequest,
+  getRequestIdentifier: getRequestIdentifier,
   getSelector: RelayModernSelector.getSelector,
   getSelectorsFromObject: RelayModernSelector.getSelectorsFromObject,
   getSingularSelector: RelayModernSelector.getSingularSelector,
@@ -276,6 +281,7 @@ module.exports = {
 
   // Utilities
   RelayProfiler: RelayProfiler,
+  createPayloadFor3DField: createPayloadFor3DField,
 
   // INTERNAL-ONLY: These exports might be removed at any point.
   RelayConcreteNode: RelayConcreteNode,

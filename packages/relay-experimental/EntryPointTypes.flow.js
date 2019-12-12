@@ -30,13 +30,14 @@ export type PreloadFetchPolicy =
 export type PreloadOptions = {|
   +fetchKey?: string | number,
   +fetchPolicy?: ?PreloadFetchPolicy,
+  +extraOptions?: ?{},
 |};
 
 // Note: the phantom type parameter here helps ensures that the
 // $Parameters.js value matches the type param provided to preloadQuery.
 // eslint-disable-next-line no-unused-vars
 export type PreloadableConcreteRequest<TQuery: OperationType> = {|
-  getModuleIfRequired: () => ConcreteRequest | null,
+  queryResource: JSResourceReference<ConcreteRequest>,
   params: RequestParameters,
 |};
 

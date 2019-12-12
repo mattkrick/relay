@@ -11,8 +11,8 @@
 
 'use strict';
 
-const GraphQLCompilerContext = require('../../core/GraphQLCompilerContext');
-const GraphQLIRPrinter = require('../../core/GraphQLIRPrinter');
+const CompilerContext = require('../../core/CompilerContext');
+const IRPrinter = require('../../core/IRPrinter');
 const Schema = require('../../core/Schema');
 const SkipUnusedVariablesTransform = require('../SkipUnusedVariablesTransform');
 
@@ -27,11 +27,11 @@ generateTestsFromFixtures(
   text => {
     const {definitions} = parseGraphQLText(TestSchema, text);
     const compilerSchema = Schema.DEPRECATED__create(TestSchema);
-    return new GraphQLCompilerContext(compilerSchema)
+    return new CompilerContext(compilerSchema)
       .addAll(definitions)
       .applyTransforms([SkipUnusedVariablesTransform.transform])
       .documents()
-      .map(doc => GraphQLIRPrinter.print(compilerSchema, doc))
+      .map(doc => IRPrinter.print(compilerSchema, doc))
       .join('\n');
   },
 );
