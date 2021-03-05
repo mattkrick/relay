@@ -19,11 +19,13 @@ const RelayNetwork = require('../../network/RelayNetwork');
 const RelayObservable = require('../../network/RelayObservable');
 const RelayRecordSource = require('../RelayRecordSource');
 
+const warning = require('warning');
+
+const {graphql, getRequest} = require('../../query/GraphQLTag');
 const {
   createOperationDescriptor,
 } = require('../RelayModernOperationDescriptor');
 const {RelayFeatureFlags} = require('relay-runtime');
-const {generateAndCompile} = require('relay-test-utils-internal');
 
 describe('execute() with Flight field', () => {
   let callbacks;
@@ -50,32 +52,28 @@ describe('execute() with Flight field', () => {
     // Note: This must come after `jest.resetModules()`.
     RelayFeatureFlags.ENABLE_REACT_FLIGHT_COMPONENT_FIELD = true;
 
-    ({InnerQuery, FlightQuery} = generateAndCompile(`
-      query FlightQuery($id: ID!, $count: Int!) {
+    FlightQuery = getRequest(graphql`
+      query RelayModernEnvironmentExecuteWithFlightTestFlightQuery(
+        $id: ID!
+        $count: Int!
+      ) {
         node(id: $id) {
           ... on Story {
             flightComponent(condition: true, count: $count, id: $id)
           }
         }
       }
+    `);
 
-      query InnerQuery($id: ID!) {
+    InnerQuery = getRequest(graphql`
+      query RelayModernEnvironmentExecuteWithFlightTestInnerQuery($id: ID!) {
         node(id: $id) {
           ... on User {
             name
           }
         }
       }
-
-      extend type Story {
-        flightComponent(
-          condition: Boolean!
-          count: Int!
-          id: ID!
-        ): ReactFlightComponent
-          @react_flight_component(name: "FlightComponent.server")
-      }
-      `));
+    `);
 
     reactFlightPayloadDeserializer = jest.fn(payload => {
       return {
@@ -100,7 +98,10 @@ describe('execute() with Flight field', () => {
     source = RelayRecordSource.create();
     // DataChecker receives its operationLoader from the store, not the
     // environment. So we have to pass it here as well.
-    store = new RelayModernStore(source, {operationLoader});
+    store = new RelayModernStore(source, {
+      operationLoader,
+      gcReleaseBufferSize: 0,
+    });
     environment = new RelayModernEnvironment({
       network: RelayNetwork.create(fetch),
       operationLoader,
@@ -123,6 +124,7 @@ describe('execute() with Flight field', () => {
           id: '1',
           __typename: 'Story',
           flightComponent: {
+            status: 'SUCCESS',
             tree: [
               {
                 type: 'div',
@@ -150,6 +152,7 @@ describe('execute() with Flight field', () => {
                 },
               },
             ],
+            errors: [],
           },
         },
       },
@@ -187,6 +190,7 @@ describe('execute() with Flight field', () => {
           id: '1',
           __typename: 'Story',
           flightComponent: {
+            status: 'SUCCESS',
             tree: [
               {
                 type: 'div',
@@ -214,6 +218,7 @@ describe('execute() with Flight field', () => {
                 },
               },
             ],
+            errors: [],
           },
         },
       },
@@ -224,6 +229,7 @@ describe('execute() with Flight field', () => {
           id: '1',
           __typename: 'Story',
           flightComponent: {
+            status: 'SUCCESS',
             tree: [
               {
                 type: 'div',
@@ -251,6 +257,7 @@ describe('execute() with Flight field', () => {
                 },
               },
             ],
+            errors: [],
           },
         },
       },
@@ -294,6 +301,110 @@ describe('execute() with Flight field', () => {
     ]);
   });
 
+  describe('when server errors are encountered', () => {
+    beforeEach(() => {
+      jest.mock('warning');
+    });
+
+    describe('and ReactFlightServerErrorHandler is specified', () => {
+      let reactFlightServerErrorHandler;
+      beforeEach(() => {
+        reactFlightServerErrorHandler = jest.fn((status, errors) => {
+          const err = new Error(`${status}: ${errors[0].message}`);
+          err.stack = errors[0].stack;
+          throw err;
+        });
+        environment = new RelayModernEnvironment({
+          network: RelayNetwork.create(fetch),
+          operationLoader,
+          store,
+          reactFlightPayloadDeserializer,
+          reactFlightServerErrorHandler,
+        });
+      });
+
+      it('calls ReactFlightServerErrorHandler', () => {
+        environment.execute({operation}).subscribe(callbacks);
+        const payload = {
+          data: {
+            node: {
+              id: '1',
+              __typename: 'Story',
+              flightComponent: {
+                status: 'FAIL_JS_ERROR',
+                tree: [],
+                queries: [],
+                errors: [
+                  {
+                    message: 'Something threw an error on the server',
+                    stack: 'Error\n    at <anonymous>:1:1',
+                  },
+                ],
+              },
+            },
+          },
+        };
+        dataSource.next(payload);
+        jest.runAllTimers();
+
+        expect(next).toBeCalledTimes(0);
+        expect(complete).toBeCalledTimes(0);
+        expect(error).toBeCalledTimes(1);
+        expect(reactFlightPayloadDeserializer).toBeCalledTimes(0);
+        expect(reactFlightServerErrorHandler).toHaveBeenCalledWith(
+          'FAIL_JS_ERROR',
+          expect.arrayContaining([
+            expect.objectContaining({
+              message: 'Something threw an error on the server',
+              stack: 'Error\n    at <anonymous>:1:1',
+            }),
+          ]),
+        );
+      });
+    });
+
+    describe('no ReactFlightServerErrorHandler is specified', () => {
+      it('warns', () => {
+        environment.execute({operation}).subscribe(callbacks);
+        const payload = {
+          data: {
+            node: {
+              id: '1',
+              __typename: 'Story',
+              flightComponent: {
+                status: 'FAIL_JS_ERROR',
+                tree: [],
+                queries: [],
+                errors: [
+                  {
+                    message: 'Something threw an error on the server',
+                    stack: 'Error\n    at <anonymous>:1:1',
+                  },
+                ],
+              },
+            },
+          },
+        };
+        dataSource.next(payload);
+        jest.runAllTimers();
+
+        expect(next).toBeCalledTimes(1);
+        expect(complete).toBeCalledTimes(0);
+        expect(error).toBeCalledTimes(0);
+        expect(reactFlightPayloadDeserializer).toBeCalledTimes(1);
+        expect(warning).toHaveBeenCalledWith(
+          false,
+          expect.stringContaining(
+            'RelayResponseNormalizer: Received server errors for field `%s`.',
+          ),
+          'flightComponent',
+          expect.stringContaining('Something threw an error on the server'),
+          expect.stringContaining('Error\n    at <anonymous>:1:1'),
+        );
+      });
+    });
+  });
+
   describe('when checking availability', () => {
     it('returns available if all data exists in the environment', () => {
       environment.execute({operation}).subscribe(callbacks);
@@ -303,6 +414,7 @@ describe('execute() with Flight field', () => {
             id: '1',
             __typename: 'Story',
             flightComponent: {
+              status: 'SUCCESS',
               tree: [
                 {
                   type: 'div',
@@ -330,6 +442,7 @@ describe('execute() with Flight field', () => {
                   },
                 },
               ],
+              errors: [],
             },
           },
         },
@@ -355,6 +468,7 @@ describe('execute() with Flight field', () => {
             id: '1',
             __typename: 'Story',
             flightComponent: {
+              status: 'SUCCESS',
               tree: null,
               queries: [
                 {
@@ -375,6 +489,7 @@ describe('execute() with Flight field', () => {
                   },
                 },
               ],
+              errors: [],
             },
           },
         },
@@ -398,6 +513,7 @@ describe('execute() with Flight field', () => {
             id: '1',
             __typename: 'Story',
             flightComponent: {
+              status: 'SUCCESS',
               tree: [
                 {
                   type: 'div',
@@ -407,6 +523,7 @@ describe('execute() with Flight field', () => {
                 },
               ],
               queries: null,
+              errors: [],
             },
           },
         },
@@ -430,6 +547,7 @@ describe('execute() with Flight field', () => {
             id: '1',
             __typename: 'Story',
             flightComponent: {
+              status: 'SUCCESS',
               tree: [
                 {
                   type: 'div',
@@ -457,6 +575,7 @@ describe('execute() with Flight field', () => {
                   },
                 },
               ],
+              errors: [],
             },
           },
         },
@@ -470,6 +589,39 @@ describe('execute() with Flight field', () => {
       expect(environment.check(innerOperation)).toEqual({
         status: 'missing',
       });
+    });
+  });
+
+  describe('when the row protocol is malformed', () => {
+    it('warns if the row protocol is null', () => {
+      environment.execute({operation}).subscribe(callbacks);
+      const payload = {
+        data: {
+          node: {
+            id: '1',
+            __typename: 'Story',
+            flightComponent: {
+              status: 'UNEXPECTED_ERROR',
+              tree: null,
+              queries: [],
+              errors: [],
+            },
+          },
+        },
+      };
+      dataSource.next(payload);
+      jest.runAllTimers();
+
+      expect(next).toBeCalledTimes(1);
+      expect(complete).toBeCalledTimes(0);
+      expect(error).toBeCalledTimes(0);
+      expect(reactFlightPayloadDeserializer).toBeCalledTimes(0);
+      expect(warning).toHaveBeenCalledWith(
+        false,
+        expect.stringContaining(
+          'RelayResponseNormalizer: Expected `tree` not to be null.',
+        ),
+      );
     });
   });
 });

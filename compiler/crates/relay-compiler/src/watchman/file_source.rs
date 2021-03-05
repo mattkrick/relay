@@ -10,8 +10,9 @@ use super::{Clock, WatchmanFile};
 use crate::errors::{Error, Result};
 use crate::{compiler_state::CompilerState, config::Config, saved_state::SavedStateLoader};
 use common::{PerfLogEvent, PerfLogger};
-use log::{info, warn};
+use log::{debug, info, warn};
 use serde_bser::value::Value;
+use std::process::Command;
 use watchman_client::prelude::*;
 use watchman_client::{Subscription as WatchmanSubscription, SubscriptionData};
 
@@ -19,6 +20,22 @@ pub struct FileSource<'config> {
     client: Client,
     config: &'config Config,
     resolved_root: ResolvedRoot,
+}
+
+#[derive(Debug)]
+pub enum FileSourceSubscriptionNextChange {
+    Result(FileSourceResult),
+    /// This value indicated the beginning of the source control update.
+    /// We may stop the compilation process and wait for the next event.
+    SourceControlUpdateEnter,
+    /// If source control update has not changed the base revision of the commit
+    /// We may continue the `watch(...)` loop of the compiler, expecting to receive
+    /// a `Result` event after `SourceControlUpdateLeave`.
+    SourceControlUpdateLeave,
+    /// When source control update completed and we detected changed base revision,
+    /// we may need to create a new compiler state.
+    SourceControlUpdate,
+    None,
 }
 
 #[derive(Debug)]
@@ -99,7 +116,7 @@ impl<'config> FileSource<'config> {
                     perf_logger,
                     perf_logger_event,
                     saved_state_config.clone(),
-                    saved_state_loader,
+                    saved_state_loader.as_ref(),
                     saved_state_version,
                 )
                 .await
@@ -137,6 +154,7 @@ impl<'config> FileSource<'config> {
         perf_logger_event: &impl PerfLogEvent,
         perf_logger: &impl PerfLogger,
     ) -> Result<(CompilerState, FileSourceSubscription)> {
+        let timer = perf_logger_event.start("file_source_subscribe_time");
         let compiler_state = self.query(perf_logger_event, perf_logger).await?;
 
         let expression = get_watchman_expr(&self.config);
@@ -152,17 +170,17 @@ impl<'config> FileSource<'config> {
                 SubscribeRequest {
                     expression: Some(expression),
                     since: Some(file_source_result.clock.clone()),
+                    defer: vec!["hg.update"],
                     ..Default::default()
                 },
             )
             .await?;
 
+        perf_logger_event.stop(timer);
+
         Ok((
             compiler_state,
-            FileSourceSubscription {
-                resolved_root: self.resolved_root.clone(),
-                subscription,
-            },
+            FileSourceSubscription::new(self.resolved_root.clone(), subscription),
         ))
     }
 
@@ -202,7 +220,7 @@ impl<'config> FileSource<'config> {
             .await?;
         perf_logger_event.stop(query_timer);
 
-        let files = query_result.files.ok_or_else(|| Error::EmptyQueryResult)?;
+        let files = query_result.files.ok_or(Error::EmptyQueryResult)?;
         Ok(FileSourceResult {
             files,
             resolved_root: self.resolved_root.clone(),
@@ -220,7 +238,7 @@ impl<'config> FileSource<'config> {
         perf_logger: &impl PerfLogger,
         perf_logger_event: &impl PerfLogEvent,
         saved_state_config: ScmAwareClockData,
-        saved_state_loader: &Box<dyn SavedStateLoader + Send + Sync>,
+        saved_state_loader: &'_ (dyn SavedStateLoader + Send + Sync),
         saved_state_version: &str,
     ) -> std::result::Result<Result<CompilerState>, &'static str> {
         let scm_since = Clock::ScmAware(FatClockData {
@@ -237,7 +255,7 @@ impl<'config> FileSource<'config> {
             .ok_or("no saved state in watchman response")?;
         let saved_state_path = perf_logger_event.time("saved_state_loading_time", || {
             saved_state_loader
-                .load(&saved_state_info)
+                .load(&saved_state_info, self.config)
                 .ok_or("unable to load")
         })?;
         let mut compiler_state = perf_logger_event
@@ -251,7 +269,11 @@ impl<'config> FileSource<'config> {
                 perf_logger.flush();
                 "failed to deserialize"
             })?;
-        if compiler_state.saved_state_version != saved_state_version {
+        // For cases, where we want to debug saved state integration, that doesn't include
+        // saved_state format changes we may need to disable this by adding this env variable
+        if std::env::var("RELAY_COMPILER_IGNORE_SAVED_STATE_VERSION").is_err()
+            && compiler_state.saved_state_version != saved_state_version
+        {
             return Err("Saved state version doesn't match.");
         }
         compiler_state
@@ -277,23 +299,85 @@ impl<'config> FileSource<'config> {
 pub struct FileSourceSubscription {
     resolved_root: ResolvedRoot,
     subscription: WatchmanSubscription<WatchmanFile>,
+    base_revision: String,
 }
 
 impl FileSourceSubscription {
+    fn new(resolved_root: ResolvedRoot, subscription: WatchmanSubscription<WatchmanFile>) -> Self {
+        Self {
+            resolved_root,
+            subscription,
+            base_revision: get_base_revision(None),
+        }
+    }
+
     /// Awaits changes from Watchman and provides the next set of changes
     /// if there were any changes to files
-    pub async fn next_change(&mut self) -> Result<Option<FileSourceResult>> {
-        let update = self.subscription.next().await?;
-        if let SubscriptionData::FilesChanged(changes) = update {
-            if let Some(files) = changes.files {
-                return Ok(Some(FileSourceResult {
-                    files,
-                    resolved_root: self.resolved_root.clone(),
-                    clock: changes.clock,
-                    saved_state_info: None,
-                }));
+    pub async fn next_change(&mut self) -> Result<FileSourceSubscriptionNextChange> {
+        match self.subscription.next().await? {
+            SubscriptionData::FilesChanged(changes) => {
+                if let Some(files) = changes.files {
+                    debug!("number of files in this update: {}", files.len());
+                    return Ok(FileSourceSubscriptionNextChange::Result(FileSourceResult {
+                        files,
+                        resolved_root: self.resolved_root.clone(),
+                        clock: changes.clock,
+                        saved_state_info: None,
+                    }));
+                }
+            }
+            SubscriptionData::StateEnter { state_name, .. } => {
+                if state_name == "hg.update" {
+                    return Ok(FileSourceSubscriptionNextChange::SourceControlUpdateEnter);
+                }
+            }
+            SubscriptionData::StateLeave {
+                state_name,
+                metadata,
+            } => {
+                if state_name == "hg.update" {
+                    let current_commit = if let Some(Value::ByteString(value)) = metadata {
+                        Some(value.to_string())
+                    } else {
+                        None
+                    };
+                    let current_base_revision = get_base_revision(current_commit);
+                    if current_base_revision != self.base_revision {
+                        self.base_revision = current_base_revision;
+                        return Ok(FileSourceSubscriptionNextChange::SourceControlUpdate);
+                    } else {
+                        return Ok(FileSourceSubscriptionNextChange::SourceControlUpdateLeave);
+                    }
+                }
+            }
+            SubscriptionData::Canceled => {
+                return Err(Error::WatchmanSubscriptionCanceled);
             }
         }
-        Ok(None)
+        Ok(FileSourceSubscriptionNextChange::None)
     }
+}
+
+/// Base revision in this case is a common ancestor of two revisions:
+/// `master` and current commit hash or `.`
+fn get_base_revision(commit_hash: Option<String>) -> String {
+    let output = Command::new("hg")
+        .arg("log".to_string())
+        .arg("-r".to_string())
+        .arg(format!(
+            "ancestor(master, {})",
+            commit_hash.unwrap_or_else(|| ".".to_string())
+        ))
+        .arg("-T={node}")
+        .output()
+        .expect("Expect `hg` command getting base revision.");
+
+    if !output.stderr.is_empty() {
+        panic!(
+            "Stderr getting base revision hash:\n {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    String::from_utf8_lossy(&output.stdout).to_string()
 }
